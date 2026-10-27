@@ -450,22 +450,29 @@ end $$;
           'migrations',
           '20261025000002_cron_schedule.sql'
         );
-        fs.writeFileSync(migrationPath, cronSql, 'utf8');
+        const originalContent = fs.existsSync(migrationPath) ? fs.readFileSync(migrationPath, 'utf8') : '';
+        try {
+          fs.writeFileSync(migrationPath, cronSql, 'utf8');
 
-        const args = ['db', 'push'];
-        if (config.supabaseDbPassword) {
-          args.push('--password', config.supabaseDbPassword);
+          const args = ['db', 'push'];
+          if (config.supabaseDbPassword) {
+            args.push('--password', config.supabaseDbPassword);
+          }
+
+          const extraEnv: Record<string, string> = {};
+          if (config.supabaseAccessToken) {
+            extraEnv.SUPABASE_ACCESS_TOKEN = config.supabaseAccessToken;
+          }
+
+          const { stdout, stderr } = await this.runSafeCommand('supabase', args, secretList, extraEnv);
+          if (stdout) log(stdout);
+          if (stderr) log(stderr);
+          log('Cron migration 20261025000002_cron_schedule.sql applied successfully.');
+        } finally {
+          if (originalContent) {
+            fs.writeFileSync(migrationPath, originalContent, 'utf8');
+          }
         }
-
-        const extraEnv: Record<string, string> = {};
-        if (config.supabaseAccessToken) {
-          extraEnv.SUPABASE_ACCESS_TOKEN = config.supabaseAccessToken;
-        }
-
-        const { stdout, stderr } = await this.runSafeCommand('supabase', args, secretList, extraEnv);
-        if (stdout) log(stdout);
-        if (stderr) log(stderr);
-        log('Cron migration 20261025000002_cron_schedule.sql applied successfully.');
       }
 
       log('Cron schedule "open-assistant-reminders" configured (* * * * *).');

@@ -14,10 +14,10 @@ begin
     '* * * * *',
     $cron_body$
     select net.http_post(
-      url := 'https://mockprojectref123456.supabase.co/functions/v1/process-reminders',
+      url := 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/process-reminders',
       headers := jsonb_build_object(
         'Content-Type', 'application/json',
-        'Authorization', 'Bearer f922fc3936c861e1d622c8a44adc5e14d1df585ef2645327'
+        'Authorization', 'Bearer YOUR_WORKER_SECRET'
       ),
       body := '{}'::jsonb
     ) as request_id;

@@ -1,5 +1,6 @@
 // tests/setup/deployer.test.ts
 import { describe, it, expect, vi } from 'vitest';
+import fs from 'node:fs';
 import { SetupDeployer } from '../../src/setup/deployer.js';
 import { SetupValidator } from '../../src/setup/validator.js';
 import { SetupConfig } from '../../src/setup/types.js';
@@ -23,6 +24,7 @@ describe('SetupDeployer', () => {
   });
 
   it('runs deployment pipeline and tracks step progress', async () => {
+    vi.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
     const mockValidator = {
       checkPrerequisites: vi.fn().mockResolvedValue({
         node: { installed: true, version: 'v24.0.0' },
