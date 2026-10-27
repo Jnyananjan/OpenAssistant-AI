@@ -1,0 +1,15 @@
+# Real-data migration
+- [x] Add provider hub, connected cards, and accessible add/edit modal with real-data counts/catalogs and capability-gated server operations; no local-store persistence.
+- [x] Add AI workload advisor on the routing page: server-side AI Gateway recommendation limited to verified connected models, with catalog-match validation, fallback pick, and capability-gated "Use this model"; 12 tests pass and the flow is browser-verified end to end.
+- [x] Simplify the UI per the approved plan: three-step Setup with direct paste-and-save credential fields (new encrypted `/api/setup/credentials` endpoint), webhook URL card with copy, routing "Add model first" prompt plus per-mode `+` assign buttons, table layouts for Tasks and Memory, Telegram bot tab removed from navigation, and a real-status "OpenAssistant AI Core" sidebar footer replacing the raw localhost display; 42 tests pass and all pages browser-verified.
+- [ ] Verify provider save/test/remove with real providers — blocked by missing encrypted-save/model/remove/draft-test endpoints and provider credentials; modal remains available with unsupported operations disabled.
+- [x] Add checklist-based setup screen and local service with encrypted terminal credential entry, real prerequisite/Telegram/Gemini checks, database inspection, reviewed migration deployment command, webhook registration to an existing handler, and persisted local preferences; 24 tests pass and browser verified settings read-back.
+- [ ] Complete deployment and webhook secret provisioning — blocked by missing existing OpenAssistant AI migrations, handler source, and real service credentials; scheduler/function deployment and delivery are not verified.
+- [x] Resolve missing-server runtime crash with a nonthrowing unavailable state; verified six pages and retry without uncaught errors, plus recovery regression tests (15 tests passed; automatic build OK).
+- [x] Audit runtime values and document existing backend gaps.
+- [x] Remove mock store, responses, and controls; wire pages to validated live responses.
+- [x] Add safe loading/error/empty states and mutation invalidation.
+- [x] Test live-response handling and inspect actual unavailable-server flows.
+- [x] Document backend configuration blockers and actual verification results in DATA-AUDIT.md.
+- [ ] Connect and verify persistent dashboard records — blocked by missing database schema and runtime mapping; local setup service is now included.
+- [ ] Verify external provider/Telegram/deployment operations — blocked by real credentials, existing handler configuration and schema; local configuration persistence is verified.

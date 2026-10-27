@@ -1,0 +1,31 @@
+{
+  "name": "open-assistant-ai",
+  "version": "0.1.0",
+  "description": "An open-source, Telegram-first personal AI productivity assistant that remembers your tasks and follows up.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build:functions": "npx --yes esbuild supabase/functions/telegram-webhook/main.ts --bundle --format=esm --alias:@supabase/supabase-js=npm:@supabase/supabase-js@2 --alias:zod=npm:zod@3 --external:npm:* --external:node:* --outfile=supabase/functions/telegram-webhook/index.ts && npx --yes esbuild supabase/functions/process-reminders/main.ts --bundle --format=esm --alias:@supabase/supabase-js=npm:@supabase/supabase-js@2 --alias:zod=npm:zod@3 --external:npm:* --external:node:* --outfile=supabase/functions/process-reminders/index.ts",
+    "build": "npm run build:functions && tsc",
+    "setup": "npm --prefix dashboard run setup",
+    "setup:classic": "npm run build && node dist/src/setup/server.js",
+    "setup:check": "npm run build && node dist/src/setup/cli-check.js",
+    "setup:build": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "dashboard:dev": "npm --prefix dashboard run dev",
+    "dashboard:build": "npm --prefix dashboard run build",
+    "dashboard:test": "npm --prefix dashboard test"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
+  }
+}
