@@ -9,12 +9,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Jnyananjan/OpenReminder-ai/releases"><img src="https://img.shields.io/github/v/release/Jnyananjan/OpenReminder-ai?color=brightgreen&label=Release" alt="Latest Release" /></a>
-  <a href="https://github.com/Jnyananjan/OpenReminder-ai/actions/workflows/ci.yml"><img src="https://github.com/Jnyananjan/OpenReminder-ai/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
+  <a href="https://github.com/Jnyananjan/OpenAssistant-AI/releases"><img src="https://img.shields.io/github/v/release/Jnyananjan/OpenAssistant-AI?color=brightgreen&label=Release" alt="Latest Release" /></a>
+  <a href="https://github.com/Jnyananjan/OpenAssistant-AI/actions/workflows/ci.yml"><img src="https://github.com/Jnyananjan/OpenAssistant-AI/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License" /></a>
-  <a href="https://github.com/Jnyananjan/OpenReminder-ai/stargazers"><img src="https://img.shields.io/github/stars/Jnyananjan/OpenReminder-ai?style=social" alt="GitHub Stars" /></a>
-  <a href="https://github.com/Jnyananjan/OpenReminder-ai/network/members"><img src="https://img.shields.io/github/forks/Jnyananjan/OpenReminder-ai?style=social" alt="GitHub Forks" /></a>
-  <a href="https://github.com/Jnyananjan/OpenReminder-ai/issues"><img src="https://img.shields.io/github/issues/Jnyananjan/OpenReminder-ai?color=orange" alt="Issues" /></a>
+  <a href="https://github.com/Jnyananjan/OpenAssistant-AI/stargazers"><img src="https://img.shields.io/github/stars/Jnyananjan/OpenAssistant-AI?style=social" alt="GitHub Stars" /></a>
+  <a href="https://github.com/Jnyananjan/OpenAssistant-AI/network/members"><img src="https://img.shields.io/github/forks/Jnyananjan/OpenAssistant-AI?style=social" alt="GitHub Forks" /></a>
+  <a href="https://github.com/Jnyananjan/OpenAssistant-AI/issues"><img src="https://img.shields.io/github/issues/Jnyananjan/OpenAssistant-AI?color=orange" alt="Issues" /></a>
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome" /></a>
 </p>
 
@@ -100,8 +100,8 @@ Before setting up, gather the following developer credentials. **Google AI Studi
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/Jnyananjan/OpenReminder-ai.git
-cd OpenReminder-ai
+git clone https://github.com/Jnyananjan/OpenAssistant-AI.git
+cd OpenAssistant-AI
 ```
 
 ### 2. Install Dependencies
@@ -197,7 +197,7 @@ OpenAssistant AI is built from the ground up for strict privacy:
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Jnyananjan/OpenReminder-ai&type=Date)](https://star-history.com/#Jnyananjan/OpenReminder-ai&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Jnyananjan/OpenAssistant-AI&type=Date)](https://star-history.com/#Jnyananjan/OpenAssistant-AI&Date)
 
 If you find OpenAssistant AI useful, please consider giving the repository a **Star (⭐)**—it helps more developers discover the project and keeps development moving forward!
 
@@ -215,7 +215,7 @@ Contributions, bug reports, and feature suggestions are warmly welcomed!
 ## Repository Metadata
 
 - **Name:** OpenAssistant AI
-- **Repository:** [https://github.com/Jnyananjan/OpenReminder-ai.git](https://github.com/Jnyananjan/OpenReminder-ai.git)
+- **Repository:** [https://github.com/Jnyananjan/OpenAssistant-AI.git](https://github.com/Jnyananjan/OpenAssistant-AI.git)
 - **License:** [Apache-2.0](LICENSE)
 
 Built with ❤️ for dependable personal productivity.
