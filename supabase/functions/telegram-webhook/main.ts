@@ -35,7 +35,7 @@ export async function handleTelegramWebhook(req: Request): Promise<Response> {
     getEnv('TELEGRAM_ALLOWED_USERS') ||
     getEnv('TELEGRAM_USER_ID');
 
-  if (!botToken || !supabaseUrl || !supabaseServiceRoleKey) {
+  if (!botToken || !supabaseUrl || !supabaseServiceRoleKey || !webhookSecret) {
     return new Response(
       JSON.stringify({ error: 'Server configuration error: missing required environment variables' }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }

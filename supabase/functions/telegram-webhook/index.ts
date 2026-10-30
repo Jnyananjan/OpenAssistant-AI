@@ -1570,6 +1570,9 @@ Just reply with the new time, e.g.:
   }
 };
 
+// src/bot/webhook.ts
+import { timingSafeEqual } from "node:crypto";
+
 // src/ai/openai.ts
 var OpenAIProvider = class {
   id = "openai";
@@ -2229,6 +2232,18 @@ var MemoryEngine = class {
 };
 
 // src/bot/webhook.ts
+function safeCompareSecret(provided, expected) {
+  if (!provided || !expected) {
+    return false;
+  }
+  const bufProvided = Buffer.from(provided, "utf8");
+  const bufExpected = Buffer.from(expected, "utf8");
+  if (bufProvided.length !== bufExpected.length) {
+    timingSafeEqual(bufExpected, bufExpected);
+    return false;
+  }
+  return timingSafeEqual(bufProvided, bufExpected);
+}
 var WebhookController = class {
   webhookSecret;
   db;
@@ -2262,7 +2277,7 @@ var WebhookController = class {
     });
   }
   async handleRequest(secretTokenHeader, update) {
-    if (this.webhookSecret && secretTokenHeader !== this.webhookSecret) {
+    if (!this.webhookSecret || !safeCompareSecret(secretTokenHeader, this.webhookSecret)) {
       return {
         statusCode: 401,
         body: { error: "Unauthorized: Invalid webhook secret token" }
@@ -3426,7 +3441,7 @@ async function handleTelegramWebhook(req) {
   const supabaseUrl = getEnv("SUPABASE_URL");
   const supabaseServiceRoleKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");
   const allowedUsersEnv = getEnv("ALLOWED_TELEGRAM_USERS") || getEnv("TELEGRAM_ALLOWED_USERS") || getEnv("TELEGRAM_USER_ID");
-  if (!botToken || !supabaseUrl || !supabaseServiceRoleKey) {
+  if (!botToken || !supabaseUrl || !supabaseServiceRoleKey || !webhookSecret) {
     return new Response(
       JSON.stringify({ error: "Server configuration error: missing required environment variables" }),
       { status: 500, headers: { "Content-Type": "application/json" } }

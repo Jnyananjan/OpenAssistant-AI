@@ -73,6 +73,21 @@ describe('WebhookController Integration', () => {
     expect(resInvalid.statusCode).toBe(401);
   });
 
+  it('strictly rejects requests when webhookSecret is unset on controller', async () => {
+    const unconfiguredController = new WebhookController({
+      db,
+      notification,
+      aiProvider: mockAiProvider,
+      allowlist: new UserAllowlist('123456'),
+    });
+    const update: TelegramWebhookUpdate = {
+      update_id: 2,
+      message: { message_id: 1, chat: { id: 100, type: 'private' }, date: 12345, text: '/start' },
+    };
+    const res = await unconfiguredController.handleRequest('any-secret', update);
+    expect(res.statusCode).toBe(401);
+  });
+
   it('deduplicates Telegram updates by update_id', async () => {
     const update: TelegramWebhookUpdate = {
       update_id: 200,

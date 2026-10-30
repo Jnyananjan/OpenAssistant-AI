@@ -1,4 +1,5 @@
 // src/bot/webhook.ts
+import { timingSafeEqual } from 'node:crypto';
 import { DatabaseRepository } from '../db/repository.js';
 import {
   NotificationProvider,
@@ -38,6 +39,23 @@ export interface WebhookConfig {
 export interface WebhookResult {
   statusCode: number;
   body: Record<string, unknown>;
+}
+
+export function safeCompareSecret(
+  provided: string | null | undefined,
+  expected: string | null | undefined
+): boolean {
+  if (!provided || !expected) {
+    return false;
+  }
+  const bufProvided = Buffer.from(provided, 'utf8');
+  const bufExpected = Buffer.from(expected, 'utf8');
+  if (bufProvided.length !== bufExpected.length) {
+    // Perform constant-time dummy comparison to prevent timing leaks on length
+    timingSafeEqual(bufExpected, bufExpected);
+    return false;
+  }
+  return timingSafeEqual(bufProvided, bufExpected);
 }
 
 export class WebhookController {
@@ -80,7 +98,7 @@ export class WebhookController {
     update: TelegramWebhookUpdate
   ): Promise<WebhookResult> {
     // 1. Verify Telegram webhook secret token
-    if (this.webhookSecret && secretTokenHeader !== this.webhookSecret) {
+    if (!this.webhookSecret || !safeCompareSecret(secretTokenHeader, this.webhookSecret)) {
       return {
         statusCode: 401,
         body: { error: 'Unauthorized: Invalid webhook secret token' },

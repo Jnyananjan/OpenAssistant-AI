@@ -288,6 +288,9 @@ import { createCipheriv, createDecipheriv, randomBytes, createHash } from "node:
 // src/bot/callbacks.ts
 import { randomBytes as randomBytes3 } from "node:crypto";
 
+// src/bot/webhook.ts
+import { timingSafeEqual } from "node:crypto";
+
 // src/db/supabase-repository.ts
 import { createClient } from "npm:@supabase/supabase-js@2";
 var SupabaseDatabaseRepository = class {
