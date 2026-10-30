@@ -437,6 +437,37 @@ export function SetupCockpit() {
                 </Btn>
               </div>
             </div>
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <Zap className="size-4 text-primary" />
+                    1-Click Auto Deploy
+                  </h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Bundles Edge Functions, deploys both functions directly to your Supabase project, syncs function secrets, and registers the Telegram webhook.
+                  </p>
+                </div>
+              </div>
+              <Btn
+                variant="primary"
+                disabled={Boolean(busy)}
+                onClick={() =>
+                  void run("autodeploy", async () => {
+                    const res = await operation<{ ok: boolean; webhookUrl: string; logs: string[] }>("/api/setup/auto-deploy", {});
+                    if (res?.webhookUrl) {
+                      setUrl(res.webhookUrl);
+                      setHandlerReady(true);
+                    }
+                    await client.invalidateQueries({ queryKey: ["setup-status"] });
+                    setNotice("Auto-deploy successful! Edge functions deployed and webhook active.");
+                  })
+                }
+              >
+                {busy === "autodeploy" ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5" />}
+                {busy === "autodeploy" ? "Deploying..." : "Auto deploy & connect bot"}
+              </Btn>
+            </div>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium">Bot handler URL</label>

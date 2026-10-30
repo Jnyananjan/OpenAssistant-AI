@@ -167,48 +167,125 @@ async function syncSupabaseSecrets(config) {
   }).catch(() => {});
 }
 
-async function deploy() {
-  const { config } = await unlock();
-  const inspection = await inspectDatabase(config);
-  console.log("Existing public tables:", inspection.tables.join(", ") || "(none)");
-  console.log("Scheduler extensions:", inspection.extensions.join(", ") || "(none)");
-  const files = await migrationFiles();
-  if (!files.length)
-    throw new Error(
-      "Deployment blocked: supply your existing OpenAssistant AI migrations and function code. No schema has been invented or changed.",
-    );
-  console.log("Candidate migration files:", files.join(", "));
-  console.log(
-    "Review schema compatibility, policies and migration history locally. Link the CLI to this same project before proceeding.",
-  );
-  const linked = await readFile(resolve("supabase/.temp/project-ref"), "utf8").catch(() => "");
-  if (linked.trim() !== config.credentials.PROJECT_REF)
-    throw new Error(
-      "The database CLI is not linked to the configured project. Link it locally before deployment.",
-    );
-  const env = { ...process.env, SUPABASE_ACCESS_TOKEN: config.credentials.SUPABASE_ACCESS_TOKEN };
-  try {
-    await exec("supabase", ["db", "push", "--dry-run", "--linked"], { env, timeout: 60000 });
-  } catch {
-    throw new Error(
-      "Database deployment preview failed. Inspect the linked project and migration history locally.",
-    );
+async function executeAutoDeploy(config) {
+  const { PROJECT_REF, SUPABASE_ACCESS_TOKEN, TELEGRAM_BOT_TOKEN } = config.credentials;
+  if (!PROJECT_REF) {
+    throw new Error("Missing PROJECT_REF. Please configure your Supabase Project ID in the Connections tab.");
   }
-  if (
-    (await prompt("Type APPLY REVIEWED MIGRATIONS to deploy pending migrations")) !==
-    "APPLY REVIEWED MIGRATIONS"
-  )
-    throw new Error("Deployment cancelled.");
-  try {
-    await exec("supabase", ["db", "push", "--linked"], { env, timeout: 120000 });
-  } catch {
-    throw new Error(
-      "Database deployment did not complete. Check migration history locally before retrying.",
-    );
+  if (!SUPABASE_ACCESS_TOKEN) {
+    throw new Error("Missing SUPABASE_ACCESS_TOKEN. Please provide your Supabase Personal Access Token.");
   }
-  console.log("Database CLI confirmed deployment.");
+
+  let rootDir = process.cwd();
+  const candidates = [
+    rootDir,
+    resolve(rootDir, ".."),
+    resolve(rootDir, "../.."),
+  ];
+  for (const c of candidates) {
+    try {
+      await stat(resolve(c, "supabase/functions"));
+      rootDir = c;
+      break;
+    } catch {}
+  }
+
+  const logs = [];
+  logs.push(`Starting automated deployment to project ${PROJECT_REF}...`);
+
+  const npxCmd = process.platform === "win32" ? "npx.cmd" : "npx";
+  const supabaseCmd = process.platform === "win32" ? "supabase.exe" : "supabase";
+  const env = { ...process.env, SUPABASE_ACCESS_TOKEN };
+
+  const runCmd = async (cmd, args) => {
+    try {
+      return await exec(cmd, args, { cwd: rootDir, env, timeout: 120000 });
+    } catch (err) {
+      if (err.code === "ENOENT" && cmd === supabaseCmd) {
+        return await exec(npxCmd, ["--yes", "supabase", ...args], { cwd: rootDir, env, timeout: 120000 });
+      }
+      throw err;
+    }
+  };
+
+  // 1. Bundle functions
+  logs.push("Bundling Edge Functions with esbuild...");
+  await runCmd(npxCmd, [
+    "--yes",
+    "esbuild",
+    "supabase/functions/telegram-webhook/main.ts",
+    "--bundle",
+    "--format=esm",
+    "--alias:@supabase/supabase-js=npm:@supabase/supabase-js@2",
+    "--alias:zod=npm:zod@3",
+    "--external:npm:*",
+    "--outfile=supabase/functions/telegram-webhook/index.ts",
+  ]);
+  await runCmd(npxCmd, [
+    "--yes",
+    "esbuild",
+    "supabase/functions/process-reminders/main.ts",
+    "--bundle",
+    "--format=esm",
+    "--alias:@supabase/supabase-js=npm:@supabase/supabase-js@2",
+    "--alias:zod=npm:zod@3",
+    "--external:npm:*",
+    "--outfile=supabase/functions/process-reminders/index.ts",
+  ]);
+  logs.push("Edge functions bundled successfully.");
+
+  // 2. Deploy edge functions
+  logs.push("Deploying telegram-webhook function to Supabase...");
+  await runCmd(supabaseCmd, [
+    "functions",
+    "deploy",
+    "telegram-webhook",
+    "--project-ref",
+    PROJECT_REF,
+    "--no-verify-jwt",
+  ]);
+  logs.push("Function telegram-webhook deployed successfully.");
+
+  logs.push("Deploying process-reminders function to Supabase...");
+  await runCmd(supabaseCmd, [
+    "functions",
+    "deploy",
+    "process-reminders",
+    "--project-ref",
+    PROJECT_REF,
+    "--no-verify-jwt",
+  ]);
+  logs.push("Function process-reminders deployed successfully.");
+
+  // 3. Sync Supabase secrets
+  logs.push("Configuring Supabase function secrets...");
+  await syncSupabaseSecrets(config);
+  logs.push("Function secrets synchronized.");
+
+  // 4. Register Telegram Webhook
+  const webhookUrl = `https://${PROJECT_REF}.supabase.co/functions/v1/telegram-webhook`;
+  if (TELEGRAM_BOT_TOKEN) {
+    logs.push(`Registering Telegram webhook: ${webhookUrl}...`);
+    await telegram(config, "setWebhook", {
+      url: webhookUrl,
+      secret_token: config.workerSecret,
+      allowed_updates: ["message", "edited_message"],
+    });
+    logs.push("Telegram webhook registered successfully.");
+  }
+
+  return { ok: true, webhookUrl, logs };
 }
 
+async function deploy() {
+  const { config } = await unlock();
+  console.log("🚀 OpenAssistant AI - Automated Deployment");
+  const result = await executeAutoDeploy(config);
+  for (const log of result.logs) {
+    console.log(`[DEPLOY] ${log}`);
+  }
+  console.log(`\n🎉 Deployment complete! Webhook URL: ${result.webhookUrl}`);
+}
 async function getLocalStore() {
   const storePath = resolve(directory, "local-store.json");
   try {
@@ -900,6 +977,11 @@ async function serve() {
         await persist({ ...config, webhookUrl: url });
         syncSupabaseSecrets(config).catch(() => {});
         return reply(200, { ok: true, url, pendingUpdates: info.pending_update_count ?? null });
+      }
+      if (path === "/api/setup/auto-deploy" && req.method === "POST") {
+        const result = await executeAutoDeploy(config);
+        await persist({ ...config, webhookUrl: result.webhookUrl });
+        return reply(200, result);
       }
 
       // --- Live Dashboard Data API ---

@@ -7,6 +7,7 @@
   "scripts": {
     "build:functions": "npx --yes esbuild supabase/functions/telegram-webhook/main.ts --bundle --format=esm --alias:@supabase/supabase-js=npm:@supabase/supabase-js@2 --alias:zod=npm:zod@3 --external:npm:* --external:node:* --outfile=supabase/functions/telegram-webhook/index.ts && npx --yes esbuild supabase/functions/process-reminders/main.ts --bundle --format=esm --alias:@supabase/supabase-js=npm:@supabase/supabase-js@2 --alias:zod=npm:zod@3 --external:npm:* --external:node:* --outfile=supabase/functions/process-reminders/index.ts",
     "build": "npm run build:functions && tsc",
+    "deploy": "node dashboard/scripts/setup-server.mjs deploy",
     "setup": "npm --prefix dashboard run setup",
     "setup:classic": "npm run build && node dist/src/setup/server.js",
     "setup:check": "npm run build && node dist/src/setup/cli-check.js",
