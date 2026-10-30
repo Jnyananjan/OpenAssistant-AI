@@ -421,5 +421,22 @@ describe('Reminder Lifecycle & Escalation Integration', () => {
 
     expect(recorded).toBe(false);
   });
+
+  it('correctly filters "today" tasks in user timezone (Asia/Kolkata)', async () => {
+    // Current time: 2026-10-30 02:00:00 IST (2026-10-29 20:30:00 UTC)
+    const tzClock = new ControllableClock('2026-10-29T20:30:00Z');
+    const tzDb = new InMemoryDatabaseRepository(tzClock);
+    const user = await tzDb.getOrCreateUser(111, 111, 'Bob');
+
+    // Task 1: Due Oct 30 at 03:00 IST (Oct 29 21:30:00 UTC) - is TODAY in Asia/Kolkata
+    await tzDb.createTask(user.id, 'Early morning task', '2026-10-29T21:30:00Z');
+
+    // Task 2: Due Oct 31 at 02:00 IST (Oct 30 20:30:00 UTC) - is TOMORROW in Asia/Kolkata
+    await tzDb.createTask(user.id, 'Tomorrow task', '2026-10-30T20:30:00Z');
+
+    const todayTasks = await tzDb.listTasks(user.id, 'today', 'Asia/Kolkata');
+    expect(todayTasks).toHaveLength(1);
+    expect(todayTasks[0].title).toBe('Early morning task');
+  });
 });
 

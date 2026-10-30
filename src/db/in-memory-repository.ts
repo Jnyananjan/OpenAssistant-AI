@@ -19,6 +19,7 @@ import {
   MemoryCategory,
   MemoryRelationship,
 } from '../memory/types.js';
+import { parseLocalToUtc } from '../shared/time.js';
 
 export class InMemoryDatabaseRepository implements DatabaseRepository {
   public users: Map<string, AppUser> = new Map();
@@ -150,7 +151,8 @@ export class InMemoryDatabaseRepository implements DatabaseRepository {
 
   async listTasks(
     userId: string,
-    filter: 'all' | 'today' | 'upcoming' | 'completed' = 'all'
+    filter: 'all' | 'today' | 'upcoming' | 'completed' = 'all',
+    userTimezone: string = 'Asia/Kolkata'
   ): Promise<Task[]> {
     const userTasks = Array.from(this.tasks.values()).filter((t) => t.user_id === userId);
 
@@ -162,8 +164,11 @@ export class InMemoryDatabaseRepository implements DatabaseRepository {
 
     if (filter === 'today') {
       const now = this.clock.now();
-      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-      const endOfDay = startOfDay + 24 * 60 * 60 * 1000;
+      const localDate = new Intl.DateTimeFormat('en-CA', { timeZone: userTimezone }).format(now);
+      const startOfDay = parseLocalToUtc(`${localDate}T00:00:00`, userTimezone).getTime();
+      const nextDayDate = new Date(startOfDay + 26 * 60 * 60 * 1000);
+      const nextLocalDate = new Intl.DateTimeFormat('en-CA', { timeZone: userTimezone }).format(nextDayDate);
+      const endOfDay = parseLocalToUtc(`${nextLocalDate}T00:00:00`, userTimezone).getTime();
 
       return openTasks.filter((t) => {
         if (!t.due_at) return false;
