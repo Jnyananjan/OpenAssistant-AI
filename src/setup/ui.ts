@@ -550,7 +550,7 @@ export function renderDashboardHtml(csrfToken: string): string {
     <div class="brand">
       <span style="font-size: 20px;">⚡</span>
       <span class="brand-title">Open Assistant AI</span>
-      <span class="brand-tag">v0.1.0 • Multi-Provider</span>
+      <span class="brand-tag">v0.1.1 • Multi-Provider</span>
     </div>
     <div style="font-size: 12px; color: var(--text-muted);">
       Automated Setup & AI Control Panel

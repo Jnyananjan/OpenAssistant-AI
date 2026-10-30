@@ -110,6 +110,18 @@ var DeleteMemoryIntentSchema = z.object({
   intent: z.literal("delete_memory"),
   query: z.string().min(1).max(500)
 });
+var TrackExpenseIntentSchema = z.object({
+  intent: z.literal("track_expense"),
+  amount: z.number().positive(),
+  currency: z.string().default("INR"),
+  category: z.string().default("general"),
+  description: z.string().min(1).max(250)
+});
+var QueryExpensesIntentSchema = z.object({
+  intent: z.literal("query_expenses"),
+  period: z.enum(["today", "week", "month", "all"]).default("week"),
+  category: z.string().optional()
+});
 var SwitchProviderModelIntentSchema = z.object({
   intent: z.literal("switch_provider_model"),
   provider: z.string().optional(),
@@ -130,7 +142,9 @@ var AssistantIntentSchema = z.discriminatedUnion("intent", [
   SaveMemoryIntentSchema,
   SearchMemoryIntentSchema,
   DeleteMemoryIntentSchema,
-  SwitchProviderModelIntentSchema
+  SwitchProviderModelIntentSchema,
+  TrackExpenseIntentSchema,
+  QueryExpensesIntentSchema
 ]);
 
 // src/bot/messages.ts
@@ -320,6 +334,10 @@ var SupabaseDatabaseRepository = class {
       throw new Error(`Failed to update timezone: ${error?.message}`);
     }
     return data;
+  }
+  async getActiveUsers() {
+    const { data } = await this.client.from("app_users").select("*").eq("is_active", true);
+    return data || [];
   }
   async recordUpdate(updateId, telegramUserId) {
     const { error } = await this.client.from("telegram_updates").insert({
@@ -623,6 +641,34 @@ var SupabaseDatabaseRepository = class {
       reminder_id: reminderId || null,
       task_id: taskId || null
     });
+  }
+  async hasEventOccurred(userId, eventType, dateKey) {
+    const { data } = await this.client.from("reminder_events").select("id").eq("user_id", userId).eq("event_type", eventType).contains("metadata", { date: dateKey }).limit(1);
+    return Boolean(data && data.length > 0);
+  }
+  async getExpenses(userId, sinceIso) {
+    let query = this.client.from("reminder_events").select("metadata, created_at").eq("user_id", userId).eq("event_type", "expense").order("created_at", { ascending: false });
+    if (sinceIso) {
+      query = query.gte("created_at", sinceIso);
+    }
+    const { data } = await query;
+    if (!data) return [];
+    return data.map((row) => ({
+      amount: Number(row.metadata?.amount || 0),
+      currency: String(row.metadata?.currency || "INR"),
+      category: String(row.metadata?.category || "general"),
+      description: String(row.metadata?.description || ""),
+      createdAt: row.created_at
+    }));
+  }
+  async getRecentChatHistory(userId, limit = 6) {
+    const { data } = await this.client.from("reminder_events").select("metadata, created_at").eq("user_id", userId).eq("event_type", "chat_message").order("created_at", { ascending: false }).limit(limit);
+    if (!data) return [];
+    return data.reverse().map((row) => ({
+      role: row.metadata?.role || "user",
+      text: String(row.metadata?.text || ""),
+      createdAt: row.created_at
+    }));
   }
   // AI Provider Credentials
   async saveUserCredential(userId, provider, encrypted, maskedKey, baseUrl) {
@@ -1023,6 +1069,117 @@ var ReminderWorker = class {
       });
     }
   }
+  async checkScheduledBriefings() {
+    const users = await this.db.getActiveUsers();
+    const now = this.clock.now();
+    let morningCount = 0;
+    let eveningCount = 0;
+    for (const user of users) {
+      if (!user.telegram_chat_id) continue;
+      const tz = user.timezone || "UTC";
+      let hour;
+      let minute;
+      let dateKey;
+      try {
+        const localStr = new Intl.DateTimeFormat("en-US", {
+          timeZone: tz,
+          hour: "numeric",
+          minute: "numeric",
+          hour12: false,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit"
+        }).format(now);
+        const [datePart, timePart] = localStr.split(", ");
+        const [month, day, year] = datePart.split("/");
+        dateKey = `${year}-${month}-${day}`;
+        const [hourStr, minuteStr] = (timePart || "0:0").split(":");
+        hour = parseInt(hourStr, 10);
+        minute = parseInt(minuteStr, 10);
+      } catch {
+        continue;
+      }
+      if (hour === 8) {
+        const alreadySent = await this.db.hasEventOccurred(user.id, "morning_briefing", dateKey);
+        if (!alreadySent) {
+          await this.sendMorningBriefing(user, tz, dateKey);
+          morningCount++;
+        }
+      }
+      if (hour === 21 && minute >= 30 || hour === 22 && minute < 30) {
+        const alreadySent = await this.db.hasEventOccurred(user.id, "evening_review", dateKey);
+        if (!alreadySent) {
+          await this.sendEveningReview(user, tz, dateKey);
+          eveningCount++;
+        }
+      }
+    }
+    return { morningCount, eveningCount };
+  }
+  async sendMorningBriefing(user, timezone, dateKey) {
+    const todayTasks = await this.db.listTasks(user.id, "today", timezone);
+    let msg = `\u2600\uFE0F *Good morning! Here is your day:*
+`;
+    if (todayTasks.length === 0) {
+      msg += `\u2022 No tasks scheduled for today.
+`;
+    } else {
+      todayTasks.forEach((t) => {
+        const timeStr = t.due_at ? formatLocalDateTime(t.due_at, timezone) : "Anytime";
+        msg += `\u2022 ${timeStr}: ${t.title}
+`;
+      });
+    }
+    await this.notification.sendText({
+      chat_id: user.telegram_chat_id,
+      text: msg.trim(),
+      parse_mode: "Markdown"
+    });
+    await this.db.recordEvent(user.id, "morning_briefing", {
+      date: dateKey,
+      taskCount: todayTasks.length
+    });
+  }
+  async sendEveningReview(user, timezone, dateKey) {
+    const allTasks = await this.db.listTasks(user.id, "all", timezone);
+    const openTasks = allTasks.filter((t) => t.status === "open");
+    const completedToday = allTasks.filter((t) => t.status === "completed");
+    let msg = `\u{1F319} *Evening Check-in:*
+`;
+    msg += `You completed ${completedToday.length} task${completedToday.length === 1 ? "" : "s"} today.
+`;
+    if (openTasks.length === 0) {
+      msg += `All tasks completed today! \u{1F389}`;
+      await this.notification.sendText({
+        chat_id: user.telegram_chat_id,
+        text: msg,
+        parse_mode: "Markdown"
+      });
+    } else {
+      const topIncomplete = openTasks[0];
+      msg += `Incomplete: "${topIncomplete.title}"`;
+      if (openTasks.length > 1) {
+        msg += ` (+${openTasks.length - 1} more)`;
+      }
+      await this.notification.sendText({
+        chat_id: user.telegram_chat_id,
+        text: msg,
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "\u27A1\uFE0F Roll over to Tomorrow 9 AM", callback_data: `rollover:${topIncomplete.id}` },
+              { text: "\u2705 Mark Done", callback_data: `task_done:${topIncomplete.id}` }
+            ]
+          ]
+        }
+      });
+    }
+    await this.db.recordEvent(user.id, "evening_review", {
+      date: dateKey,
+      openCount: openTasks.length
+    });
+  }
 };
 
 // supabase/functions/process-reminders/main.ts
@@ -1073,7 +1230,12 @@ async function handleProcessReminders(req) {
   });
   try {
     const runResult = await worker.runBatch();
-    return new Response(JSON.stringify({ ok: true, result: runResult }), {
+    let briefings = { morningCount: 0, eveningCount: 0 };
+    try {
+      briefings = await worker.checkScheduledBriefings();
+    } catch (e) {
+    }
+    return new Response(JSON.stringify({ ok: true, result: runResult, briefings }), {
       status: 200,
       headers: { "Content-Type": "application/json" }
     });

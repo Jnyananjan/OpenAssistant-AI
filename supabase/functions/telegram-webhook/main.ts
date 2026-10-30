@@ -30,7 +30,10 @@ export async function handleTelegramWebhook(req: Request): Promise<Response> {
   const geminiModel = getEnv('GEMINI_MODEL') || 'gemini-3.5-flash-lite';
   const supabaseUrl = getEnv('SUPABASE_URL');
   const supabaseServiceRoleKey = getEnv('SUPABASE_SERVICE_ROLE_KEY');
-  const allowedUsersEnv = getEnv('ALLOWED_TELEGRAM_USERS');
+  const allowedUsersEnv =
+    getEnv('ALLOWED_TELEGRAM_USERS') ||
+    getEnv('TELEGRAM_ALLOWED_USERS') ||
+    getEnv('TELEGRAM_USER_ID');
 
   if (!botToken || !supabaseUrl || !supabaseServiceRoleKey) {
     return new Response(

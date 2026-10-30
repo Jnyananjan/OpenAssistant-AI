@@ -70,7 +70,8 @@ export function createTaskCreatedMessage(
   dueAt: Date | string | null,
   reminderAt: Date | string | null,
   offsetMinutes: number,
-  timeZone: string
+  timeZone: string,
+  reminderId?: string
 ): SendTextInput {
   let details = `✅ *Task & Reminder Saved*\n\n*Task:* ${escapeMarkdown(taskTitle)}\n`;
 
@@ -87,11 +88,24 @@ export function createTaskCreatedMessage(
   }
   details += `*Timezone:* ${timeZone}`;
 
-  return {
+  const message: SendTextInput = {
     chat_id: chatId,
     text: details,
     parse_mode: 'Markdown',
   };
+
+  if (reminderId) {
+    message.reply_markup = {
+      inline_keyboard: [
+        [
+          { text: '💤 Snooze 1h', callback_data: `snooze:${reminderId}:60` },
+          { text: '✅ Mark Done', callback_data: `done:${reminderId}` },
+        ],
+      ],
+    };
+  }
+
+  return message;
 }
 
 export function createReminderNotificationMessage(

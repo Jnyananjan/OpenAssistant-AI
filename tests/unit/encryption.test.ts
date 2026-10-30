@@ -22,7 +22,7 @@ describe('EncryptionService', () => {
     const payload = service.encrypt('super-secret-api-token');
     const tamperedPayload = {
       ...payload,
-      encrypted: payload.encrypted.slice(0, -2) + '00',
+      encrypted: (payload.encrypted[0] === '0' ? '1' : '0') + payload.encrypted.slice(1),
     };
 
     expect(() => service.decrypt(tamperedPayload)).toThrow();

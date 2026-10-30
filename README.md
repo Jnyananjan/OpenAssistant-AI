@@ -189,7 +189,15 @@ Telegram Alert (Done / Snooze 1h / Pause)
 
 OpenAssistant AI is built from the ground up for strict privacy:
 - **Local Credential Sealing:** All API keys in the dashboard are sealed locally with AES-256-GCM using `scryptSync` key derivation. They are never sent unencrypted or returned to the browser.
-- **Telegram Sender Allowlist:** The webhook drops and ignores any messages sent by Telegram IDs not explicitly included in your `ALLOWED_TELEGRAM_USERS` allowlist.
+- **Telegram Sender Allowlist:** The webhook drops and ignores any messages sent by Telegram IDs not explicitly included in your `TELEGRAM_ALLOWED_USERS` (or `ALLOWED_TELEGRAM_USERS`) allowlist.
+
+> [!TIP]
+> **Troubleshooting: "Access Restricted" message**  
+> If the bot replies with `⛔ Access Restricted: Your Telegram account is not on the authorized user allowlist`, your Telegram ID is not on the allowlist yet.  
+> 1. Find your ID by messaging [@userinfobot](https://t.me/userinfobot) or checking the `telegram_user_id` column in your Supabase `telegram_updates` table.  
+> 2. Set your ID via Supabase CLI or Dashboard:  
+>    `npx supabase secrets set TELEGRAM_ALLOWED_USERS="<YOUR_NUMERIC_ID>"`  
+>    *(Leave empty `""` to allow all users).*
 - **Encrypted Webhook Verification:** Telegram calls are verified with `X-Telegram-Bot-Api-Secret-Token`.
 - **Database Row Level Security:** Public tables have strict RLS enabled; edge workers communicate via dedicated service roles with zero public leakage.
 

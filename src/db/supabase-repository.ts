@@ -112,6 +112,14 @@ export class SupabaseDatabaseRepository implements DatabaseRepository {
     return data as AppUser;
   }
 
+  async getActiveUsers(): Promise<AppUser[]> {
+    const { data } = await this.client
+      .from('app_users')
+      .select('*')
+      .eq('is_active', true);
+    return (data || []) as AppUser[];
+  }
+
   async recordUpdate(
     updateId: number,
     telegramUserId?: number
@@ -640,6 +648,67 @@ export class SupabaseDatabaseRepository implements DatabaseRepository {
       reminder_id: reminderId || null,
       task_id: taskId || null,
     });
+  }
+
+    async hasEventOccurred(userId: string, eventType: string, dateKey: string): Promise<boolean> {
+    const { data } = await this.client
+      .from('reminder_events')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('event_type', eventType)
+      .contains('metadata', { date: dateKey })
+      .limit(1);
+    return Boolean(data && data.length > 0);
+  }
+
+  async getExpenses(
+    userId: string,
+    sinceIso?: string
+  ): Promise<Array<{ amount: number; currency: string; category: string; description: string; createdAt: string }>> {
+    let query = this.client
+      .from('reminder_events')
+      .select('metadata, created_at')
+      .eq('user_id', userId)
+      .eq('event_type', 'expense')
+      .order('created_at', { ascending: false });
+
+    if (sinceIso) {
+      query = query.gte('created_at', sinceIso);
+    }
+
+    const { data } = await query;
+    if (!data) return [];
+
+    return data.map((row: any) => ({
+      amount: Number(row.metadata?.amount || 0),
+      currency: String(row.metadata?.currency || 'INR'),
+      category: String(row.metadata?.category || 'general'),
+      description: String(row.metadata?.description || ''),
+      createdAt: row.created_at,
+    }));
+  }
+
+  async getRecentChatHistory(
+    userId: string,
+    limit: number = 6
+  ): Promise<Array<{ role: 'user' | 'assistant'; text: string; createdAt: string }>> {
+    const { data } = await this.client
+      .from('reminder_events')
+      .select('metadata, created_at')
+      .eq('user_id', userId)
+      .eq('event_type', 'chat_message')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (!data) return [];
+
+    return data
+      .reverse()
+      .map((row: any) => ({
+        role: (row.metadata?.role as 'user' | 'assistant') || 'user',
+        text: String(row.metadata?.text || ''),
+        createdAt: row.created_at,
+      }));
   }
 
   // AI Provider Credentials

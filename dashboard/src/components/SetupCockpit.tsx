@@ -146,12 +146,14 @@ function SecretField({
       <div className="mt-2 flex gap-2">
         <Input
           id={id}
-          type={show ? "text" : "password"}
+          type={field === "TELEGRAM_USER_ID" ? "text" : show ? "text" : "password"}
           autoComplete="off"
           spellCheck={false}
           placeholder={
             field === "TELEGRAM_USER_ID"
-              ? "e.g. 123456789 (from @userinfobot)"
+              ? configured
+                ? "Configured — enter new ID to replace"
+                : "e.g. 123456789 (from @userinfobot)"
               : field === "PROJECT_REF"
                 ? "e.g. abcdefghijklmnopqrst or paste project URL"
                 : configured
@@ -395,12 +397,7 @@ export function SetupCockpit() {
                           href={source.href}
                           source={source.source}
                           configured={saved(name)}
-                          value={
-                            drafts[name] ??
-                            (name === "TELEGRAM_USER_ID" && config?.settings?.allowedUsers?.length
-                              ? config.settings.allowedUsers.join(", ")
-                              : "")
-                          }
+                          value={drafts[name] ?? ""}
                           onChange={(value) => setDrafts((c) => ({ ...c, [name]: value }))}
                         />
                       );

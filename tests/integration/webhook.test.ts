@@ -270,5 +270,125 @@ describe('WebhookController Integration', () => {
     expect(res.statusCode).toBe(200);
     expect(sentMessages[sentMessages.length - 1].text).toContain('already in the past');
   });
-});
 
+  it('passes replied message and conversation history into AI interpreter', async () => {
+    const user = await db.getOrCreateUser(123456, 123456, 'Alice');
+
+    let capturedContext: string | undefined;
+    mockAiProvider.interpretMessage = vi.fn().mockImplementation(async (input) => {
+      capturedContext = input.conversationContext;
+      return {
+        intent: 'chat',
+        reply: 'I understand the context!',
+      };
+    });
+
+    // 1. Send first message
+    await controller.handleRequest(WEBHOOK_SECRET, {
+      update_id: 901,
+      message: {
+        message_id: 10,
+        from: { id: 123456, is_bot: false, first_name: 'Alice' },
+        chat: { id: 123456, type: 'private' },
+        date: 12345,
+        text: 'Remind me to call Mom',
+      },
+    });
+
+    // 2. Send second message replying to a bot reminder
+    await controller.handleRequest(WEBHOOK_SECRET, {
+      update_id: 902,
+      message: {
+        message_id: 11,
+        from: { id: 123456, is_bot: false, first_name: 'Alice' },
+        chat: { id: 123456, type: 'private' },
+        date: 12346,
+        text: 'actually make it tomorrow at 6pm',
+        reply_to_message: {
+          message_id: 9,
+          chat: { id: 123456, type: 'private' },
+          date: 12344,
+          text: 'Reminder: Call Mom at 4pm',
+        },
+      },
+    });
+
+    expect(capturedContext).toBeDefined();
+    expect(capturedContext).toContain('Call Mom at 4pm');
+    expect(capturedContext).toContain('Remind me to call Mom');
+  });
+
+  it('logs expenses and queries total spent by category', async () => {
+    // 1. Log an expense
+    mockAiProvider.interpretMessage = vi.fn().mockResolvedValue({
+      intent: 'track_expense',
+      amount: 25.5,
+      currency: 'USD',
+      category: 'groceries',
+      description: 'Trader Joes',
+    });
+
+    await controller.handleRequest(WEBHOOK_SECRET, {
+      update_id: 950,
+      message: {
+        message_id: 20,
+        from: { id: 123456, is_bot: false, first_name: 'Alice' },
+        chat: { id: 123456, type: 'private' },
+        date: 12350,
+        text: 'Spent $25.50 on groceries',
+      },
+    });
+
+    const loggedMsg = sentMessages[sentMessages.length - 1];
+    expect(loggedMsg.text).toContain('Expense Logged');
+    expect(loggedMsg.text).toContain('USD 25.5');
+
+    // 2. Query expenses
+    mockAiProvider.interpretMessage = vi.fn().mockResolvedValue({
+      intent: 'query_expenses',
+      period: 'week',
+    });
+
+    await controller.handleRequest(WEBHOOK_SECRET, {
+      update_id: 951,
+      message: {
+        message_id: 21,
+        from: { id: 123456, is_bot: false, first_name: 'Alice' },
+        chat: { id: 123456, type: 'private' },
+        date: 12351,
+        text: 'How much did I spend this week?',
+      },
+    });
+
+    const queryMsg = sentMessages[sentMessages.length - 1];
+    expect(queryMsg.text).toContain('Expenses for this week');
+    expect(queryMsg.text).toContain('Groceries');
+    expect(queryMsg.text).toContain('25.50');
+  });
+
+  it('captures forwarded message and passes it to intent parser', async () => {
+    let receivedUserMessage = '';
+    mockAiProvider.interpretMessage = vi.fn().mockImplementation(async (input) => {
+      receivedUserMessage = input.userMessage;
+      return {
+        intent: 'chat',
+        reply: 'I extracted the details.',
+      };
+    });
+
+    await controller.handleRequest(WEBHOOK_SECRET, {
+      update_id: 960,
+      message: {
+        message_id: 30,
+        from: { id: 123456, is_bot: false, first_name: 'Alice' },
+        chat: { id: 123456, type: 'private' },
+        date: 12360,
+        forward_date: 12300,
+        text: 'Flight to NYC departs at 7 AM tomorrow',
+      } as any,
+    });
+
+    expect(receivedUserMessage).toContain('[Forwarded message]:');
+    expect(receivedUserMessage).toContain('Flight to NYC departs at 7 AM tomorrow');
+  });
+});

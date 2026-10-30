@@ -294,7 +294,7 @@ describe('Multi-Provider AI & Graph Memory Webhook Integration', () => {
     vi.mocked(mockAiProvider.interpretMessage).mockResolvedValueOnce({
       intent: 'create_task_with_reminder',
       title: 'Submit quarterly budget',
-      due_at_local: '2026-10-30T15:00:00',
+      due_at_local: '2026-12-31T15:00:00',
       reminder_offset_minutes: 15,
       timezone: 'Asia/Kolkata',
       priority: 'normal',

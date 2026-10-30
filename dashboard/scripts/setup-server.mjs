@@ -60,7 +60,7 @@ async function unlock() {
     console.log("No existing encrypted configuration found. Initializing default local configuration...");
     const passphrase = process.env.SETUP_PASSPHRASE || "jana-ai-master-local-passphrase-at-least-16-chars";
     const initial = initialConfig({}, {
-      allowedUsers: ["123456789"],
+      allowedUsers: [],
       timezone: "Asia/Kolkata",
       maxFollowUps: 8,
     });
@@ -150,7 +150,10 @@ async function syncSupabaseSecrets(config) {
     { name: "DEFAULT_TIMEZONE", value: config.settings?.timezone || "Asia/Kolkata" },
     { name: "MAX_FOLLOW_UPS", value: String(config.settings?.maxFollowUps || 8) },
     ...(config.settings?.allowedUsers?.length
-      ? [{ name: "ALLOWED_TELEGRAM_USERS", value: config.settings.allowedUsers.join(",") }]
+      ? [
+          { name: "ALLOWED_TELEGRAM_USERS", value: config.settings.allowedUsers.join(",") },
+          { name: "TELEGRAM_ALLOWED_USERS", value: config.settings.allowedUsers.join(",") },
+        ]
       : []),
   ];
   await fetch(`https://api.supabase.com/v1/projects/${PROJECT_REF}/secrets`, {
@@ -669,10 +672,9 @@ async function serve() {
         const entries = Object.entries(submitted).filter(([name]) => fields.includes(name));
         if (!entries.length && !submitted.TELEGRAM_USER_ID)
           throw new Error("No recognized credential fields were submitted.");
-        await persist(
-          updateConfig(config, Object.fromEntries(entries), nextSettings),
-        );
-        syncSupabaseSecrets(config).catch(() => {});
+        const updatedConfig = updateConfig(config, Object.fromEntries(entries), nextSettings);
+        await persist(updatedConfig);
+        syncSupabaseSecrets(updatedConfig).catch(() => {});
         return reply(200, {
           ok: true,
           saved: [
@@ -681,6 +683,7 @@ async function serve() {
           ],
         });
       }
+
       if (path === "/api/setup/test-connection" && req.method === "POST") {
         const { field, value } = body ?? {};
         const key = (typeof value === "string" && value.trim()) || config.credentials[field];

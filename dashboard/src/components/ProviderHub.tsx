@@ -285,6 +285,7 @@ export function ProviderHub() {
           ))}
         </div>
       )}
+      
       <Dialog
         open={Boolean(modal)}
         onOpenChange={(open) => {

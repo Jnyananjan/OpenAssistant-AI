@@ -42,6 +42,7 @@ export interface DatabaseRepository {
     displayName?: string
   ): Promise<AppUser>;
   getUserByTelegramId(telegramUserId: number): Promise<AppUser | null>;
+  getActiveUsers(): Promise<AppUser[]>;
   updateUserTimezone(userId: string, timezone: string): Promise<AppUser>;
 
   // Telegram Update Deduplication
@@ -136,6 +137,12 @@ export interface DatabaseRepository {
     reminderId?: string,
     taskId?: string
   ): Promise<void>;
+  hasEventOccurred(userId: string, eventType: string, dateKey: string): Promise<boolean>;
+  getExpenses(userId: string, sinceIso?: string): Promise<Array<{ amount: number; currency: string; category: string; description: string; createdAt: string }>>;
+  getRecentChatHistory(
+    userId: string,
+    limit?: number
+  ): Promise<Array<{ role: 'user' | 'assistant'; text: string; createdAt: string }>>;
 
   // AI Provider Credentials
   saveUserCredential(

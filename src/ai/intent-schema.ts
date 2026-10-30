@@ -86,6 +86,20 @@ export const DeleteMemoryIntentSchema = z.object({
   query: z.string().min(1).max(500),
 });
 
+export const TrackExpenseIntentSchema = z.object({
+  intent: z.literal('track_expense'),
+  amount: z.number().positive(),
+  currency: z.string().default('INR'),
+  category: z.string().default('general'),
+  description: z.string().min(1).max(250),
+});
+
+export const QueryExpensesIntentSchema = z.object({
+  intent: z.literal('query_expenses'),
+  period: z.enum(['today', 'week', 'month', 'all']).default('week'),
+  category: z.string().optional(),
+});
+
 export const SwitchProviderModelIntentSchema = z.object({
   intent: z.literal('switch_provider_model'),
   provider: z.string().optional(),
@@ -108,6 +122,8 @@ export const AssistantIntentSchema = z.discriminatedUnion('intent', [
   SearchMemoryIntentSchema,
   DeleteMemoryIntentSchema,
   SwitchProviderModelIntentSchema,
+  TrackExpenseIntentSchema,
+  QueryExpensesIntentSchema,
 ]);
 
 export type AssistantIntent = z.infer<typeof AssistantIntentSchema>;
@@ -116,3 +132,5 @@ export type SaveMemoryIntent = z.infer<typeof SaveMemoryIntentSchema>;
 export type SearchMemoryIntent = z.infer<typeof SearchMemoryIntentSchema>;
 export type DeleteMemoryIntent = z.infer<typeof DeleteMemoryIntentSchema>;
 export type SwitchProviderModelIntent = z.infer<typeof SwitchProviderModelIntentSchema>;
+export type TrackExpenseIntent = z.infer<typeof TrackExpenseIntentSchema>;
+export type QueryExpensesIntent = z.infer<typeof QueryExpensesIntentSchema>;

@@ -63,7 +63,13 @@ export async function handleProcessReminders(req: Request): Promise<Response> {
 
   try {
     const runResult = await worker.runBatch();
-    return new Response(JSON.stringify({ ok: true, result: runResult }), {
+    let briefings = { morningCount: 0, eveningCount: 0 };
+    try {
+      briefings = await worker.checkScheduledBriefings();
+    } catch (e) {
+      // Non-fatal if briefings check encounters error
+    }
+    return new Response(JSON.stringify({ ok: true, result: runResult, briefings }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });

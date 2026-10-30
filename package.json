@@ -1,6 +1,6 @@
 {
   "name": "open-assistant-ai",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "An open-source, Telegram-first personal AI productivity assistant that remembers your tasks and follows up.",
   "license": "Apache-2.0",
   "type": "module",

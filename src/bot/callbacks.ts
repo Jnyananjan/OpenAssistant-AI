@@ -168,7 +168,54 @@ export class CallbackHandler {
       return;
     }
 
-    // 6. Reminder callbacks (done, snooze, resched)
+    // 6. Direct task completion callback
+    if (data.startsWith('task_done:')) {
+      const taskId = data.replace('task_done:', '');
+      const task = await this.db.getTaskById(taskId, user.id);
+      if (task) {
+        await this.db.completeTask(user.id, taskId);
+        await this.notification.answerCallbackQuery(query.id, 'Task completed! ✅');
+        await this.notification.sendText({
+          chat_id: chatId,
+          text: `🎉 *Task Completed!*\n\n"${task.title}" has been marked as done.`,
+          parse_mode: 'Markdown',
+        });
+      } else {
+        await this.notification.answerCallbackQuery(query.id, 'Task not found');
+      }
+      return;
+    }
+
+    // 7. Nightly task rollover callback
+    if (data.startsWith('rollover:')) {
+      const taskId = data.replace('rollover:', '');
+      const task = await this.db.getTaskById(taskId, user.id);
+      if (task) {
+        const tomorrow = new Date(this.clock.now().getTime() + 24 * 60 * 60 * 1000);
+        const tomorrowDate = new Intl.DateTimeFormat('en-CA', { timeZone: user.timezone || 'Asia/Kolkata' }).format(tomorrow);
+        const nextDueUtc = new Date(this.clock.now().getTime() + 24 * 60 * 60 * 1000);
+
+        await this.db.rescheduleTaskAndReminder(
+          user.id,
+          task.id,
+          null,
+          nextDueUtc.toISOString(),
+          nextDueUtc.toISOString()
+        );
+
+        await this.notification.answerCallbackQuery(query.id, 'Rolled over to tomorrow 9 AM! 📅');
+        await this.notification.sendText({
+          chat_id: chatId,
+          text: `📅 *Rolled Over:* "${task.title}"\nNew deadline: Tomorrow morning.`,
+          parse_mode: 'Markdown',
+        });
+      } else {
+        await this.notification.answerCallbackQuery(query.id, 'Task not found');
+      }
+      return;
+    }
+
+    // 8. Reminder callbacks (done, snooze, resched)
     const parts = data.split(':');
     const action = parts[0];
     const reminderId = parts[1];

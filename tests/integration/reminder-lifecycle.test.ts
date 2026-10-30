@@ -421,5 +421,36 @@ describe('Reminder Lifecycle & Escalation Integration', () => {
 
     expect(recorded).toBe(false);
   });
-});
 
+  it('delivers 8:00 AM morning executive briefing and 9:30 PM evening review', async () => {
+    const user = await db.getOrCreateUser(777, 777, 'Diana');
+    await db.updateUserTimezone(user.id, 'Asia/Kolkata');
+
+    // Create a task due today
+    await db.createTask(user.id, 'Team standup', '2026-10-25T05:00:00Z'); // 10:30 AM IST
+
+    // Set clock to 8:15 AM IST (02:45 UTC on 2026-10-25)
+    clock.setTime('2026-10-25T02:45:00Z');
+
+    let briefings = await worker.checkScheduledBriefings();
+    expect(briefings.morningCount).toBe(1);
+
+    const sentMorning = sentMessages.find(m => m.text.includes('Good morning!'));
+    expect(sentMorning).toBeDefined();
+    expect(sentMorning?.text).toContain('Team standup');
+
+    // Running again at 8:30 AM should not resend (deduplicated by date)
+    clock.setTime('2026-10-25T03:00:00Z');
+    briefings = await worker.checkScheduledBriefings();
+    expect(briefings.morningCount).toBe(0);
+
+    // Set clock to 9:45 PM IST (16:15 UTC on 2026-10-25)
+    clock.setTime('2026-10-25T16:15:00Z');
+    briefings = await worker.checkScheduledBriefings();
+    expect(briefings.eveningCount).toBe(1);
+
+    const sentEvening = sentMessages.find(m => m.text.includes('Evening Check-in'));
+    expect(sentEvening).toBeDefined();
+    expect((sentEvening?.reply_markup as any)?.inline_keyboard[0][0].text).toContain('Roll over');
+  });
+});

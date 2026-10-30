@@ -6,6 +6,8 @@ import {
   TelegramMessage,
   AppUser,
   Clock,
+  SendTextInput,
+  SendTextResult,
 } from '../shared/types.js';
 import { UserAllowlist } from './allowlist.js';
 import { CommandHandler } from './commands.js';
@@ -157,8 +159,23 @@ export class WebhookController {
           // Slash command
           await this.commandHandler.handleCommand(update.message, user);
         } else {
+          // Check if message was forwarded from another user or channel
+          const isForwarded = Boolean(
+            (update.message as any).forward_date ||
+            (update.message as any).forward_from ||
+            (update.message as any).forward_origin
+          );
+          const processedText = isForwarded
+            ? `[Forwarded message]:\n"${text}"\nExtract any task, deadline or action item from this forwarded message.`
+            : text;
+
           // Natural language intent
-          await this.handleNaturalLanguage(text, chatId, user);
+          await this.handleNaturalLanguage(
+            processedText,
+            chatId,
+            user,
+            update.message.reply_to_message?.text
+          );
         }
 
         await this.db.markUpdateProcessed(update.update_id, 'processed');
@@ -174,18 +191,59 @@ export class WebhookController {
     }
   }
 
+  private async reply(
+    chatId: number,
+    userId: string,
+    input: SendTextInput
+  ): Promise<SendTextResult> {
+    const res = await this.notification.sendText(input);
+    if (res.ok && input.text) {
+      await this.db.recordEvent(userId, 'chat_message', {
+        role: 'assistant',
+        text: input.text,
+      });
+    }
+    return res;
+  }
+
   private async handleNaturalLanguage(
     text: string,
     chatId: number,
-    user: { id: string; timezone: string }
+    user: { id: string; timezone: string },
+    replyToMessageText?: string
   ): Promise<void> {
     const referenceTime = this.clock.now();
+
+    // 1. Fetch recent conversation history before recording the new message
+    const recentHistory = await this.db.getRecentChatHistory(user.id, 6);
+
+    // 2. Record incoming user message in chat history
+    await this.db.recordEvent(user.id, 'chat_message', { role: 'user', text });
+
+    // 3. Build rich conversation context for LLM
+    let conversationContext = '';
+    if (recentHistory.length > 0) {
+      conversationContext += 'RECENT CONVERSATION (Chronological):\n' +
+        recentHistory.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: "${m.text}"`).join('\n') + '\n';
+    }
+    if (replyToMessageText) {
+      conversationContext += `\nDIRECT REPLY: The user is explicitly replying to this message:\n"${replyToMessageText}"\n`;
+    }
 
     // Retrieve memory context & open tasks
     const memories = await this.memoryEngine.getRelevantContext(user.id, text, 300);
     const existingTasks = await this.db.listTasks(user.id, 'all', user.timezone);
 
     let intent: AssistantIntent;
+
+    const interpretInput = {
+      userMessage: text,
+      userTimezone: user.timezone,
+      referenceTime,
+      existingTasks: existingTasks.map(t => ({ id: t.id, title: t.title, due_at: t.due_at })),
+      memories,
+      conversationContext: conversationContext.trim() || undefined,
+    };
 
     if (this.aiProvider instanceof SmartModelRouter) {
       const prefs = (await this.db.getUserModelPreferences(user.id)) || {
@@ -210,24 +268,12 @@ export class WebhookController {
       }));
 
       intent = await this.aiProvider.routeAndInterpret(
-        {
-          userMessage: text,
-          userTimezone: user.timezone,
-          referenceTime,
-          existingTasks: existingTasks.map(t => ({ id: t.id, title: t.title, due_at: t.due_at })),
-          memories,
-        },
+        interpretInput,
         prefs,
         decryptedCreds
       );
     } else {
-      intent = await this.aiProvider.interpretMessage({
-        userMessage: text,
-        userTimezone: user.timezone,
-        referenceTime,
-        existingTasks: existingTasks.map(t => ({ id: t.id, title: t.title, due_at: t.due_at })),
-        memories,
-      });
+      intent = await this.aiProvider.interpretMessage(interpretInput);
     }
 
     switch (intent.intent) {
@@ -238,7 +284,7 @@ export class WebhookController {
           const reminderUtc = new Date(dueUtc.getTime() - offsetMinutes * 60 * 1000);
 
           if (reminderUtc.getTime() <= referenceTime.getTime()) {
-            await this.notification.sendText({
+            await this.reply(chatId, user.id, {
               chat_id: chatId,
               text: `⚠️ The calculated reminder time (${formatLocalDateTime(reminderUtc, user.timezone)}) is already in the past. When would you like to be reminded?`,
             });
@@ -253,18 +299,21 @@ export class WebhookController {
             intent.priority || 'normal'
           );
 
-          await this.notification.sendText(
+          await this.reply(
+            chatId,
+            user.id,
             createTaskCreatedMessage(
               chatId,
               task.title,
               dueUtc,
               reminderUtc,
               offsetMinutes,
-              user.timezone
+              user.timezone,
+              reminder.id
             )
           );
         } catch {
-          await this.notification.sendText({
+          await this.reply(chatId, user.id, {
             chat_id: chatId,
             text: `I had trouble interpreting the date/time for "${intent.title}". Could you specify the exact deadline (e.g. "Tomorrow at 6 PM")?`,
           });
@@ -297,7 +346,7 @@ export class WebhookController {
         }
         reply += `\n(No reminder scheduled. You can say: "Remind me at 5 PM")`;
 
-        await this.notification.sendText({
+        await this.reply(chatId, user.id, {
           chat_id: chatId,
           text: reply,
           parse_mode: 'Markdown',
@@ -314,13 +363,13 @@ export class WebhookController {
 
         if (task) {
           await this.db.completeTask(user.id, task.id);
-          await this.notification.sendText({
+          await this.reply(chatId, user.id, {
             chat_id: chatId,
             text: `🎉 Marked *${task.title}* as completed! Outstanding reminders are stopped.`,
             parse_mode: 'Markdown',
           });
         } else {
-          await this.notification.sendText({
+          await this.reply(chatId, user.id, {
             chat_id: chatId,
             text: `I couldn't find an open task matching "${query}". Check /tasks for your open tasks.`,
           });
@@ -351,7 +400,7 @@ export class WebhookController {
             const newReminderUtc = new Date(newDueUtc.getTime() - offsetMinutes * 60 * 1000);
 
             if (newReminderUtc.getTime() <= referenceTime.getTime()) {
-              await this.notification.sendText({
+              await this.reply(chatId, user.id, {
                 chat_id: chatId,
                 text: `⚠️ The requested reschedule time (${formatLocalDateTime(newReminderUtc, user.timezone)}) is already in the past. Please specify a future time.`,
               });
@@ -366,19 +415,19 @@ export class WebhookController {
               newReminderUtc.toISOString()
             );
 
-            await this.notification.sendText({
+            await this.reply(chatId, user.id, {
               chat_id: chatId,
               text: `📅 Rescheduled *${task.title}* to ${formatLocalDateTime(newDueUtc, user.timezone)}. Next reminder: ${formatLocalDateTime(newReminderUtc, user.timezone)}.`,
               parse_mode: 'Markdown',
             });
           } catch {
-            await this.notification.sendText({
+            await this.reply(chatId, user.id, {
               chat_id: chatId,
               text: `Could not parse the new deadline. Please clarify the new date and time.`,
             });
           }
         } else {
-          await this.notification.sendText({
+          await this.reply(chatId, user.id, {
             chat_id: chatId,
             text: `Could not find an open task matching "${query}" to reschedule.`,
           });
@@ -390,7 +439,7 @@ export class WebhookController {
         const filter = intent.filter === 'today' ? 'today' : 'all';
         const tasks = await this.db.listTasks(user.id, filter, user.timezone);
         if (tasks.length === 0) {
-          await this.notification.sendText({
+          await this.reply(chatId, user.id, {
             chat_id: chatId,
             text: `You have no tasks in this list.`,
           });
@@ -403,14 +452,24 @@ export class WebhookController {
             }
             msg += `\n`;
           });
-          await this.notification.sendText({ chat_id: chatId, text: msg, parse_mode: 'Markdown' });
+
+          const taskButtons = tasks.slice(0, 5).map((t) => [
+            { text: `✅ Done: ${t.title.slice(0, 24)}`, callback_data: `task_done:${t.id}` },
+          ]);
+
+          await this.reply(chatId, user.id, {
+            chat_id: chatId,
+            text: msg,
+            parse_mode: 'Markdown',
+            reply_markup: taskButtons.length > 0 ? { inline_keyboard: taskButtons } : undefined,
+          });
         }
         break;
       }
 
       case 'save_memory': {
         await this.memoryEngine.remember(user.id, intent.content, intent.category, intent.key);
-        await this.notification.sendText({
+        await this.reply(chatId, user.id, {
           chat_id: chatId,
           text: `🧠 *Saved to Memory*\n\n"${intent.content}"\n_Category: ${intent.category}_`,
           parse_mode: 'Markdown',
@@ -421,7 +480,7 @@ export class WebhookController {
       case 'search_memory': {
         const results = await this.memoryEngine.recall(user.id, intent.query, intent.category);
         if (results.length === 0) {
-          await this.notification.sendText({
+          await this.reply(chatId, user.id, {
             chat_id: chatId,
             text: `I couldn't find any saved memories matching "${intent.query}".`,
           });
@@ -430,14 +489,14 @@ export class WebhookController {
           results.forEach(m => {
             msg += `• \`[${m.category}]\` ${m.key ? `*${m.key}*: ` : ''}${m.content}\n`;
           });
-          await this.notification.sendText({ chat_id: chatId, text: msg, parse_mode: 'Markdown' });
+          await this.reply(chatId, user.id, { chat_id: chatId, text: msg, parse_mode: 'Markdown' });
         }
         break;
       }
 
       case 'delete_memory': {
         const { deletedCount } = await this.memoryEngine.forget(user.id, intent.query);
-        await this.notification.sendText({
+        await this.reply(chatId, user.id, {
           chat_id: chatId,
           text: deletedCount > 0
             ? `🗑️ Removed ${deletedCount} memory item(s) matching "${intent.query}".`
@@ -454,7 +513,7 @@ export class WebhookController {
         
         await this.db.saveUserModelPreferences(user.id, updates);
         const reply = intent.reply || `AI settings updated: Provider=${updates.defaultProvider || 'current'}, Model=${updates.defaultModel || 'current'}, Mode=${updates.routingMode || 'current'}.`;
-        await this.notification.sendText({
+        await this.reply(chatId, user.id, {
           chat_id: chatId,
           text: `🤖 ${reply}`,
         });
@@ -462,21 +521,84 @@ export class WebhookController {
       }
 
       case 'ask_clarification':
-        await this.notification.sendText({
+        await this.reply(chatId, user.id, {
           chat_id: chatId,
           text: `❓ ${intent.question}`,
         });
         break;
 
+      case 'track_expense': {
+        await this.db.recordEvent(user.id, 'expense', {
+          amount: intent.amount,
+          currency: intent.currency,
+          category: intent.category,
+          description: intent.description,
+        });
+        await this.reply(chatId, user.id, {
+          chat_id: chatId,
+          text: `💸 *Expense Logged!*\n\n• *Amount:* ${intent.currency} ${intent.amount}\n• *Category:* ${intent.category}\n• *Description:* ${intent.description}`,
+          parse_mode: 'Markdown',
+        });
+        break;
+      }
+
+      case 'query_expenses': {
+        const period = intent.period || 'week';
+        let sinceIso: string | undefined;
+        const now = this.clock.now();
+
+        if (period === 'today') {
+          const startOfToday = new Date(now);
+          startOfToday.setUTCHours(0, 0, 0, 0);
+          sinceIso = startOfToday.toISOString();
+        } else if (period === 'week') {
+          sinceIso = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        } else if (period === 'month') {
+          sinceIso = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        }
+
+        const expenses = await this.db.getExpenses(user.id, sinceIso);
+        if (expenses.length === 0) {
+          await this.reply(chatId, user.id, {
+            chat_id: chatId,
+            text: `You have no logged expenses for this ${period}.`,
+          });
+          break;
+        }
+
+        const totalsByCategory = new Map<string, number>();
+        let grandTotal = 0;
+        let currency = expenses[0].currency || 'INR';
+
+        for (const exp of expenses) {
+          const cat = exp.category || 'general';
+          totalsByCategory.set(cat, (totalsByCategory.get(cat) || 0) + exp.amount);
+          grandTotal += exp.amount;
+        }
+
+        let msg = `📊 *Expenses for this ${period}:*\n\n`;
+        for (const [cat, sum] of totalsByCategory.entries()) {
+          msg += `• *${cat.charAt(0).toUpperCase() + cat.slice(1)}:* ${currency} ${sum.toFixed(2)}\n`;
+        }
+        msg += `\n*Total:* ${currency} ${grandTotal.toFixed(2)}`;
+
+        await this.reply(chatId, user.id, {
+          chat_id: chatId,
+          text: msg,
+          parse_mode: 'Markdown',
+        });
+        break;
+      }
+
       case 'chat':
-        await this.notification.sendText({
+        await this.reply(chatId, user.id, {
           chat_id: chatId,
           text: intent.reply,
         });
         break;
 
       default:
-        await this.notification.sendText({
+        await this.reply(chatId, user.id, {
           chat_id: chatId,
           text: `I'm not sure how to handle that request. Type /help to see what I can do.`,
         });

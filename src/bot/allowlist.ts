@@ -7,11 +7,12 @@ export class UserAllowlist {
     if (!allowedUsersEnv || allowedUsersEnv.trim() === '') {
       this.allowedIds = null; // No allowlist restriction
     } else {
-      const ids = allowedUsersEnv
+      const cleaned = allowedUsersEnv.replace(/[\[\]"']/g, '').trim();
+      const ids = cleaned
         .split(',')
         .map((s) => parseInt(s.trim(), 10))
         .filter((n) => !isNaN(n));
-      this.allowedIds = new Set(ids);
+      this.allowedIds = ids.length > 0 ? new Set(ids) : null;
     }
   }
 

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BotRouteImport } from './routes/bot'
+import { Route as ConnectionsRouteImport } from './routes/connections'
 import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as OverviewRouteImport } from './routes/overview'
 import { Route as ProvidersRouteImport } from './routes/providers'
@@ -26,6 +27,11 @@ const IndexRoute = IndexRouteImport.update({
 const BotRoute = BotRouteImport.update({
   id: '/bot',
   path: '/bot',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConnectionsRoute = ConnectionsRouteImport.update({
+  id: '/connections',
+  path: '/connections',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MemoryRoute = MemoryRouteImport.update({
@@ -62,6 +68,7 @@ const TasksRoute = TasksRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/bot': typeof BotRoute
+  '/connections': typeof ConnectionsRoute
   '/memory': typeof MemoryRoute
   '/overview': typeof OverviewRoute
   '/providers': typeof ProvidersRoute
@@ -72,6 +79,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/bot': typeof BotRoute
+  '/connections': typeof ConnectionsRoute
   '/memory': typeof MemoryRoute
   '/overview': typeof OverviewRoute
   '/providers': typeof ProvidersRoute
@@ -83,6 +91,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/bot': typeof BotRoute
+  '/connections': typeof ConnectionsRoute
   '/memory': typeof MemoryRoute
   '/overview': typeof OverviewRoute
   '/providers': typeof ProvidersRoute
@@ -95,6 +104,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/bot'
+    | '/connections'
     | '/memory'
     | '/overview'
     | '/providers'
@@ -105,6 +115,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/bot'
+    | '/connections'
     | '/memory'
     | '/overview'
     | '/providers'
@@ -115,6 +126,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/bot'
+    | '/connections'
     | '/memory'
     | '/overview'
     | '/providers'
@@ -126,6 +138,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BotRoute: typeof BotRoute
+  ConnectionsRoute: typeof ConnectionsRoute
   MemoryRoute: typeof MemoryRoute
   OverviewRoute: typeof OverviewRoute
   ProvidersRoute: typeof ProvidersRoute
@@ -148,6 +161,13 @@ declare module '@tanstack/react-router' {
       path: '/bot'
       fullPath: '/bot'
       preLoaderRoute: typeof BotRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connections': {
+      id: '/connections'
+      path: '/connections'
+      fullPath: '/connections'
+      preLoaderRoute: typeof ConnectionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/memory': {
@@ -198,6 +218,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BotRoute: BotRoute,
+  ConnectionsRoute: ConnectionsRoute,
   MemoryRoute: MemoryRoute,
   OverviewRoute: OverviewRoute,
   ProvidersRoute: ProvidersRoute,

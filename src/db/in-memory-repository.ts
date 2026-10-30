@@ -93,6 +93,10 @@ export class InMemoryDatabaseRepository implements DatabaseRepository {
     return this.users.get(userId) || null;
   }
 
+  async getActiveUsers(): Promise<AppUser[]> {
+    return Array.from(this.users.values()).filter((u) => u.is_active);
+  }
+
   async updateUserTimezone(userId: string, timezone: string): Promise<AppUser> {
     const user = this.users.get(userId);
     if (!user) throw new Error('User not found');
@@ -577,6 +581,46 @@ export class InMemoryDatabaseRepository implements DatabaseRepository {
       metadata,
       createdAt: this.clock.now().toISOString(),
     });
+  }
+
+    async hasEventOccurred(userId: string, eventType: string, dateKey: string): Promise<boolean> {
+    return this.events.some(
+      (e) => e.userId === userId && e.eventType === eventType && (e.metadata as any)?.date === dateKey
+    );
+  }
+
+  async getExpenses(
+    userId: string,
+    sinceIso?: string
+  ): Promise<Array<{ amount: number; currency: string; category: string; description: string; createdAt: string }>> {
+    return this.events
+      .filter((e) => {
+        if (e.userId !== userId || e.eventType !== 'expense') return false;
+        if (sinceIso && e.createdAt < sinceIso) return false;
+        return true;
+      })
+      .map((e) => ({
+        amount: Number((e.metadata as any).amount || 0),
+        currency: String((e.metadata as any).currency || 'INR'),
+        category: String((e.metadata as any).category || 'general'),
+        description: String((e.metadata as any).description || ''),
+        createdAt: e.createdAt,
+      }));
+  }
+
+  async getRecentChatHistory(
+    userId: string,
+    limit: number = 6
+  ): Promise<Array<{ role: 'user' | 'assistant'; text: string; createdAt: string }>> {
+    const userEvents = this.events
+      .filter((e) => e.userId === userId && e.eventType === 'chat_message')
+      .slice(-limit);
+
+    return userEvents.map((e) => ({
+      role: (e.metadata.role as 'user' | 'assistant') || 'user',
+      text: String(e.metadata.text || ''),
+      createdAt: e.createdAt,
+    }));
   }
 
   // AI Provider Credentials

@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { Activity, Brain, Cpu, GitBranch, ListChecks, Rocket } from "lucide-react";
+import { Activity, Brain, Cpu, GitBranch, Link2, ListChecks, Rocket } from "lucide-react";
 import { dashboardOptions } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
 
@@ -9,6 +9,7 @@ const nav = [
   { to: "/overview", label: "Overview", icon: Activity },
   { to: "/setup", label: "Setup", icon: Rocket },
   { to: "/providers", label: "Providers", icon: Cpu },
+  { to: "/connections", label: "Connections", icon: Link2 },
   { to: "/routing", label: "Routing", icon: GitBranch },
   { to: "/tasks", label: "Tasks", icon: ListChecks },
   { to: "/memory", label: "Memory", icon: Brain },
@@ -22,7 +23,7 @@ function CoreStatus() {
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium">OpenAssistant AI Core</span>
         <span className="rounded border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-          v1.0.0
+          v0.1.1
         </span>
       </div>
       <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
