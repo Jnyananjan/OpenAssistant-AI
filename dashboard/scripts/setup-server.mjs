@@ -194,15 +194,16 @@ async function executeAutoDeploy(config) {
   logs.push(`Starting automated deployment to project ${PROJECT_REF}...`);
 
   const npxCmd = process.platform === "win32" ? "npx.cmd" : "npx";
+  const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
   const supabaseCmd = process.platform === "win32" ? "supabase.exe" : "supabase";
   const env = { ...process.env, SUPABASE_ACCESS_TOKEN };
 
   const runCmd = async (cmd, args) => {
     try {
-      return await exec(cmd, args, { cwd: rootDir, env, timeout: 120000 });
+      return await exec(cmd, args, { cwd: rootDir, env, timeout: 120000, shell: process.platform === "win32" });
     } catch (err) {
       if (err.code === "ENOENT" && cmd === supabaseCmd) {
-        return await exec(npxCmd, ["--yes", "supabase", ...args], { cwd: rootDir, env, timeout: 120000 });
+        return await exec(npxCmd, ["--yes", "supabase", ...args], { cwd: rootDir, env, timeout: 120000, shell: process.platform === "win32" });
       }
       throw err;
     }
@@ -210,28 +211,7 @@ async function executeAutoDeploy(config) {
 
   // 1. Bundle functions
   logs.push("Bundling Edge Functions with esbuild...");
-  await runCmd(npxCmd, [
-    "--yes",
-    "esbuild",
-    "supabase/functions/telegram-webhook/main.ts",
-    "--bundle",
-    "--format=esm",
-    "--alias:@supabase/supabase-js=npm:@supabase/supabase-js@2",
-    "--alias:zod=npm:zod@3",
-    "--external:npm:*",
-    "--outfile=supabase/functions/telegram-webhook/index.ts",
-  ]);
-  await runCmd(npxCmd, [
-    "--yes",
-    "esbuild",
-    "supabase/functions/process-reminders/main.ts",
-    "--bundle",
-    "--format=esm",
-    "--alias:@supabase/supabase-js=npm:@supabase/supabase-js@2",
-    "--alias:zod=npm:zod@3",
-    "--external:npm:*",
-    "--outfile=supabase/functions/process-reminders/index.ts",
-  ]);
+  await runCmd(npmCmd, ["run", "build:functions"]);
   logs.push("Edge functions bundled successfully.");
 
   // 2. Deploy edge functions
