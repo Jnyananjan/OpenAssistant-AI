@@ -20,9 +20,11 @@ describe('EncryptionService', () => {
 
   it('fails decryption if auth tag or payload is tampered with', () => {
     const payload = service.encrypt('super-secret-api-token');
+    // Flip first character to guarantee tampering regardless of random ciphertext
+    const tamperedChar = payload.encrypted[0] === '0' ? '1' : '0';
     const tamperedPayload = {
       ...payload,
-      encrypted: payload.encrypted.slice(0, -2) + '00',
+      encrypted: tamperedChar + payload.encrypted.slice(1),
     };
 
     expect(() => service.decrypt(tamperedPayload)).toThrow();

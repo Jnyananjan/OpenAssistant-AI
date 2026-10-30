@@ -57,24 +57,29 @@ function parseLocalToUtc(localIsoString, timeZone = "Asia/Kolkata") {
     second: "numeric",
     hour12: false
   });
-  const formattedParts = formatter.formatToParts(utcGuess);
-  const partMap = {};
-  for (const part of formattedParts) {
-    if (part.type !== "literal") {
-      partMap[part.type] = parseInt(part.value, 10);
+  const getOffsetMs = (date) => {
+    const formattedParts = formatter.formatToParts(date);
+    const partMap = {};
+    for (const part of formattedParts) {
+      if (part.type !== "literal") {
+        partMap[part.type] = parseInt(part.value, 10);
+      }
     }
-  }
-  const tzHour = partMap.hour === 24 ? 0 : partMap.hour;
-  const targetTimeInTz = Date.UTC(
-    partMap.year,
-    partMap.month - 1,
-    partMap.day,
-    tzHour,
-    partMap.minute,
-    partMap.second
-  );
-  const offsetMs = targetTimeInTz - utcGuess.getTime();
-  return new Date(utcGuess.getTime() - offsetMs);
+    const tzHour = partMap.hour === 24 ? 0 : partMap.hour;
+    const targetTimeInTz = Date.UTC(
+      partMap.year,
+      partMap.month - 1,
+      partMap.day,
+      tzHour,
+      partMap.minute,
+      partMap.second
+    );
+    return targetTimeInTz - date.getTime();
+  };
+  const offset1 = getOffsetMs(utcGuess);
+  const firstResult = new Date(utcGuess.getTime() - offset1);
+  const offset2 = getOffsetMs(firstResult);
+  return offset1 === offset2 ? firstResult : new Date(utcGuess.getTime() - offset2);
 }
 
 // src/ai/intent-schema.ts
@@ -201,7 +206,8 @@ Your job is to strictly output a single JSON object adhering to ONE of these int
 1. create_task_with_reminder:
    {"intent":"create_task_with_reminder","title":"...","due_at_local":"YYYY-MM-DDTHH:mm:ss","reminder_offset_minutes":0,"timezone":"${input.userTimezone}","needs_clarification":false}
    - reminder_offset_minutes is how many minutes BEFORE the due time to remind (e.g. 5 minutes before = 5, at deadline = 0).
-   - If time is relative (e.g. "tomorrow at 6 PM"), resolve YYYY-MM-DDTHH:mm:ss based on current reference time.
+   - If time is relative (e.g. "tomorrow at 6 PM", "at 4:01"), resolve YYYY-MM-DDTHH:mm:ss based on current reference time.
+   - If the user says "remind me at <time>" without a task name, set title to "Reminder" and resolve due_at_local to that time. Never put a time in title while leaving due_at_local null.
 
 2. create_task:
    {"intent":"create_task","title":"...","due_at_local":null,"priority":"normal","timezone":"${input.userTimezone}"}
@@ -376,7 +382,7 @@ var GeminiProvider = class {
   fetch;
   constructor(config) {
     this.apiKey = config?.apiKey || "";
-    this.defaultModel = config?.model || "gemini-3.8-flash";
+    this.defaultModel = config?.model || "gemini-3.5-flash-lite";
     this.baseUrl = config?.baseUrl || "https://generativelanguage.googleapis.com/v1beta";
     this.fetch = config?.fetchFn || globalThis.fetch.bind(globalThis);
   }
@@ -2655,7 +2661,7 @@ var SupabaseDatabaseRepository = class {
     }
     return data;
   }
-  async listTasks(userId, filter = "all") {
+  async listTasks(userId, filter = "all", userTimezone = "Asia/Kolkata") {
     let query = this.client.from("tasks").select("*").eq("user_id", userId).order("due_at", { ascending: true, nullsFirst: false });
     if (filter === "completed") {
       query = query.eq("status", "completed");
@@ -2669,8 +2675,11 @@ var SupabaseDatabaseRepository = class {
     const tasks = data || [];
     if (filter === "today") {
       const now = /* @__PURE__ */ new Date();
-      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-      const endOfDay = startOfDay + 24 * 60 * 60 * 1e3;
+      const localDate = new Intl.DateTimeFormat("en-CA", { timeZone: userTimezone }).format(now);
+      const startOfDay = parseLocalToUtc(`${localDate}T00:00:00`, userTimezone).getTime();
+      const nextDayDate = new Date(startOfDay + 26 * 60 * 60 * 1e3);
+      const nextLocalDate = new Intl.DateTimeFormat("en-CA", { timeZone: userTimezone }).format(nextDayDate);
+      const endOfDay = parseLocalToUtc(`${nextLocalDate}T00:00:00`, userTimezone).getTime();
       return tasks.filter((t) => {
         if (!t.due_at) return false;
         const due = new Date(t.due_at).getTime();
@@ -2892,21 +2901,27 @@ var SupabaseDatabaseRepository = class {
     }
     return false;
   }
-  async recordReminderFailure(reminderId, workerToken, error, retryAt) {
+  async recordReminderFailure(reminderId, workerToken, error, retryAt, newFollowUpCount) {
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    const { data } = await this.client.from("reminders").update({
-      status: "scheduled",
-      scheduled_at: retryAt,
+    const updatePayload = {
+      status: retryAt ? "scheduled" : "failed",
       last_error: error,
       lease_token: null,
       lease_until: null,
       updated_at: now
-    }).eq("id", reminderId).eq("lease_token", workerToken).select("id, user_id, task_id").maybeSingle();
+    };
+    if (retryAt) {
+      updatePayload.scheduled_at = retryAt;
+    }
+    if (newFollowUpCount !== void 0) {
+      updatePayload.follow_up_count = newFollowUpCount;
+    }
+    const { data } = await this.client.from("reminders").update(updatePayload).eq("id", reminderId).eq("lease_token", workerToken).select("id, user_id, task_id").maybeSingle();
     if (data) {
       await this.recordEvent(
         data.user_id,
         "reminder_send_failed",
-        { error, retryAt },
+        { error, retryAt, status: updatePayload.status },
         reminderId,
         data.task_id
       );
@@ -3199,7 +3214,7 @@ async function handleTelegramWebhook(req) {
   const botToken = getEnv("TELEGRAM_BOT_TOKEN");
   const webhookSecret = getEnv("TELEGRAM_WEBHOOK_SECRET");
   const geminiApiKey = getEnv("GEMINI_API_KEY");
-  const geminiModel = getEnv("GEMINI_MODEL") || "gemini-3.8-flash";
+  const geminiModel = getEnv("GEMINI_MODEL") || "gemini-3.5-flash-lite";
   const supabaseUrl = getEnv("SUPABASE_URL");
   const supabaseServiceRoleKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");
   const allowedUsersEnv = getEnv("ALLOWED_TELEGRAM_USERS");

@@ -32,6 +32,55 @@ function formatLocalDateTime(dateOrIso, timeZone = "Asia/Kolkata") {
     }).format(date);
   }
 }
+function parseLocalToUtc(localIsoString, timeZone = "Asia/Kolkata") {
+  if (localIsoString.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(localIsoString)) {
+    return new Date(localIsoString);
+  }
+  const parts = localIsoString.split(/[-T:.]/);
+  if (parts.length < 5) {
+    throw new Error(`Invalid local ISO string format: ${localIsoString}`);
+  }
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const day = parseInt(parts[2], 10);
+  const hour = parseInt(parts[3], 10);
+  const minute = parseInt(parts[4], 10);
+  const second = parts[5] ? parseInt(parts[5], 10) : 0;
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+    hour12: false
+  });
+  const getOffsetMs = (date) => {
+    const formattedParts = formatter.formatToParts(date);
+    const partMap = {};
+    for (const part of formattedParts) {
+      if (part.type !== "literal") {
+        partMap[part.type] = parseInt(part.value, 10);
+      }
+    }
+    const tzHour = partMap.hour === 24 ? 0 : partMap.hour;
+    const targetTimeInTz = Date.UTC(
+      partMap.year,
+      partMap.month - 1,
+      partMap.day,
+      tzHour,
+      partMap.minute,
+      partMap.second
+    );
+    return targetTimeInTz - date.getTime();
+  };
+  const offset1 = getOffsetMs(utcGuess);
+  const firstResult = new Date(utcGuess.getTime() - offset1);
+  const offset2 = getOffsetMs(firstResult);
+  return offset1 === offset2 ? firstResult : new Date(utcGuess.getTime() - offset2);
+}
 
 // src/ai/intent-schema.ts
 import { z } from "npm:zod@3";
@@ -356,7 +405,7 @@ var SupabaseDatabaseRepository = class {
     }
     return data;
   }
-  async listTasks(userId, filter = "all") {
+  async listTasks(userId, filter = "all", userTimezone = "Asia/Kolkata") {
     let query = this.client.from("tasks").select("*").eq("user_id", userId).order("due_at", { ascending: true, nullsFirst: false });
     if (filter === "completed") {
       query = query.eq("status", "completed");
@@ -370,8 +419,11 @@ var SupabaseDatabaseRepository = class {
     const tasks = data || [];
     if (filter === "today") {
       const now = /* @__PURE__ */ new Date();
-      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-      const endOfDay = startOfDay + 24 * 60 * 60 * 1e3;
+      const localDate = new Intl.DateTimeFormat("en-CA", { timeZone: userTimezone }).format(now);
+      const startOfDay = parseLocalToUtc(`${localDate}T00:00:00`, userTimezone).getTime();
+      const nextDayDate = new Date(startOfDay + 26 * 60 * 60 * 1e3);
+      const nextLocalDate = new Intl.DateTimeFormat("en-CA", { timeZone: userTimezone }).format(nextDayDate);
+      const endOfDay = parseLocalToUtc(`${nextLocalDate}T00:00:00`, userTimezone).getTime();
       return tasks.filter((t) => {
         if (!t.due_at) return false;
         const due = new Date(t.due_at).getTime();
@@ -593,21 +645,27 @@ var SupabaseDatabaseRepository = class {
     }
     return false;
   }
-  async recordReminderFailure(reminderId, workerToken, error, retryAt) {
+  async recordReminderFailure(reminderId, workerToken, error, retryAt, newFollowUpCount) {
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    const { data } = await this.client.from("reminders").update({
-      status: "scheduled",
-      scheduled_at: retryAt,
+    const updatePayload = {
+      status: retryAt ? "scheduled" : "failed",
       last_error: error,
       lease_token: null,
       lease_until: null,
       updated_at: now
-    }).eq("id", reminderId).eq("lease_token", workerToken).select("id, user_id, task_id").maybeSingle();
+    };
+    if (retryAt) {
+      updatePayload.scheduled_at = retryAt;
+    }
+    if (newFollowUpCount !== void 0) {
+      updatePayload.follow_up_count = newFollowUpCount;
+    }
+    const { data } = await this.client.from("reminders").update(updatePayload).eq("id", reminderId).eq("lease_token", workerToken).select("id, user_id, task_id").maybeSingle();
     if (data) {
       await this.recordEvent(
         data.user_id,
         "reminder_send_failed",
-        { error, retryAt },
+        { error, retryAt, status: updatePayload.status },
         reminderId,
         data.task_id
       );
@@ -918,6 +976,11 @@ var DefaultReminderPolicy = class {
 };
 
 // src/reminders/worker.ts
+function isPermanentTelegramError(error) {
+  if (!error) return false;
+  const lower = error.toLowerCase();
+  return lower.includes("403") || lower.includes("blocked") || lower.includes("chat not found") || lower.includes("deactivated") || lower.includes("bot can't initiate");
+}
 var ReminderWorker = class {
   db;
   notification;
@@ -1008,12 +1071,28 @@ var ReminderWorker = class {
         });
       }
     } else {
-      const retryAt = new Date(now.getTime() + 2 * 60 * 1e3).toISOString();
+      const isPermanent = isPermanentTelegramError(sendResult.error);
+      const newFollowUpCount = reminder.follow_up_count + 1;
+      const isMaxReached = this.policy.isMaxReached(
+        newFollowUpCount,
+        reminder.max_follow_ups
+      );
+      let retryAt = null;
+      if (!isPermanent && !isMaxReached) {
+        const backoffMinutes = Math.min(
+          60,
+          2 * Math.pow(2, reminder.follow_up_count)
+        );
+        retryAt = new Date(
+          now.getTime() + backoffMinutes * 60 * 1e3
+        ).toISOString();
+      }
       await this.db.recordReminderFailure(
         reminder.reminder_id,
         workerToken,
         sendResult.error || "Unknown Telegram send error",
-        retryAt
+        retryAt,
+        newFollowUpCount
       );
       result.failedCount++;
       result.details.push({

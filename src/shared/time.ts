@@ -93,28 +93,33 @@ export function parseLocalToUtc(localIsoString: string, timeZone: string = 'Asia
     hour12: false,
   });
 
-  const formattedParts = formatter.formatToParts(utcGuess);
-  const partMap: Record<string, number> = {};
-  for (const part of formattedParts) {
-    if (part.type !== 'literal') {
-      partMap[part.type] = parseInt(part.value, 10);
+  const getOffsetMs = (date: Date): number => {
+    const formattedParts = formatter.formatToParts(date);
+    const partMap: Record<string, number> = {};
+    for (const part of formattedParts) {
+      if (part.type !== 'literal') {
+        partMap[part.type] = parseInt(part.value, 10);
+      }
     }
-  }
 
-  // Formatted parts in target timezone for the guess
-  const tzHour = partMap.hour === 24 ? 0 : partMap.hour;
-  const targetTimeInTz = Date.UTC(
-    partMap.year,
-    partMap.month - 1,
-    partMap.day,
-    tzHour,
-    partMap.minute,
-    partMap.second
-  );
+    const tzHour = partMap.hour === 24 ? 0 : partMap.hour;
+    const targetTimeInTz = Date.UTC(
+      partMap.year,
+      partMap.month - 1,
+      partMap.day,
+      tzHour,
+      partMap.minute,
+      partMap.second
+    );
+    return targetTimeInTz - date.getTime();
+  };
 
-  // Offset in milliseconds between UTC guess and target timezone representation
-  const offsetMs = targetTimeInTz - utcGuess.getTime();
+  // Two-pass offset evaluation handles DST transitions
+  const offset1 = getOffsetMs(utcGuess);
+  const firstResult = new Date(utcGuess.getTime() - offset1);
+  const offset2 = getOffsetMs(firstResult);
 
-  // The actual UTC date is utcGuess - offsetMs
-  return new Date(utcGuess.getTime() - offsetMs);
+  return offset1 === offset2
+    ? firstResult
+    : new Date(utcGuess.getTime() - offset2);
 }

@@ -18,6 +18,7 @@ import {
   MemoryCategory,
   MemoryRelationship,
 } from '../memory/types.js';
+import { parseLocalToUtc } from '../shared/time.js';
 
 export interface SupabaseConfig {
   supabaseUrl: string;
@@ -176,7 +177,8 @@ export class SupabaseDatabaseRepository implements DatabaseRepository {
 
   async listTasks(
     userId: string,
-    filter: 'all' | 'today' | 'upcoming' | 'completed' = 'all'
+    filter: 'all' | 'today' | 'upcoming' | 'completed' = 'all',
+    userTimezone: string = 'Asia/Kolkata'
   ): Promise<Task[]> {
     let query = this.client
       .from('tasks')
@@ -199,8 +201,11 @@ export class SupabaseDatabaseRepository implements DatabaseRepository {
 
     if (filter === 'today') {
       const now = new Date();
-      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-      const endOfDay = startOfDay + 24 * 60 * 60 * 1000;
+      const localDate = new Intl.DateTimeFormat('en-CA', { timeZone: userTimezone }).format(now);
+      const startOfDay = parseLocalToUtc(`${localDate}T00:00:00`, userTimezone).getTime();
+      const nextDayDate = new Date(startOfDay + 26 * 60 * 60 * 1000);
+      const nextLocalDate = new Intl.DateTimeFormat('en-CA', { timeZone: userTimezone }).format(nextDayDate);
+      const endOfDay = parseLocalToUtc(`${nextLocalDate}T00:00:00`, userTimezone).getTime();
 
       return tasks.filter((t) => {
         if (!t.due_at) return false;
@@ -595,19 +600,27 @@ export class SupabaseDatabaseRepository implements DatabaseRepository {
     reminderId: string,
     workerToken: string,
     error: string,
-    retryAt: string
+    retryAt: string | null,
+    newFollowUpCount?: number
   ): Promise<boolean> {
     const now = new Date().toISOString();
+    const updatePayload: Record<string, unknown> = {
+      status: retryAt ? 'scheduled' : 'failed',
+      last_error: error,
+      lease_token: null,
+      lease_until: null,
+      updated_at: now,
+    };
+    if (retryAt) {
+      updatePayload.scheduled_at = retryAt;
+    }
+    if (newFollowUpCount !== undefined) {
+      updatePayload.follow_up_count = newFollowUpCount;
+    }
+
     const { data } = await this.client
       .from('reminders')
-      .update({
-        status: 'scheduled',
-        scheduled_at: retryAt,
-        last_error: error,
-        lease_token: null,
-        lease_until: null,
-        updated_at: now,
-      })
+      .update(updatePayload)
       .eq('id', reminderId)
       .eq('lease_token', workerToken)
       .select('id, user_id, task_id')
@@ -617,7 +630,7 @@ export class SupabaseDatabaseRepository implements DatabaseRepository {
       await this.recordEvent(
         data.user_id,
         'reminder_send_failed',
-        { error, retryAt },
+        { error, retryAt, status: updatePayload.status },
         reminderId,
         data.task_id
       );

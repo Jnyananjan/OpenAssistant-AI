@@ -26,6 +26,15 @@ describe('Time utilities', () => {
     // Winter (EST, UTC-5): 2026-12-15 12:00 -> 17:00 UTC
     const winterUtc = parseLocalToUtc('2026-12-15T12:00:00', 'America/New_York');
     expect(winterUtc.toISOString()).toBe('2026-12-15T17:00:00.000Z');
+
+    // DST boundary tests (Issue #2)
+    // Spring forward (2026-03-08): 05:00 EDT should be 09:00Z
+    const springDst = parseLocalToUtc('2026-03-08T05:00:00', 'America/New_York');
+    expect(springDst.toISOString()).toBe('2026-03-08T09:00:00.000Z');
+
+    // Fall back (2026-11-01): 03:00 EST should be 08:00Z
+    const fallDst = parseLocalToUtc('2026-11-01T03:00:00', 'America/New_York');
+    expect(fallDst.toISOString()).toBe('2026-11-01T08:00:00.000Z');
   });
 
   it('correctly parses already-offset ISO strings directly', () => {

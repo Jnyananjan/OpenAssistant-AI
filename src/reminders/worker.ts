@@ -33,6 +33,18 @@ export interface WorkerRunResult {
   }>;
 }
 
+export function isPermanentTelegramError(error?: string): boolean {
+  if (!error) return false;
+  const lower = error.toLowerCase();
+  return (
+    lower.includes('403') ||
+    lower.includes('blocked') ||
+    lower.includes('chat not found') ||
+    lower.includes('deactivated') ||
+    lower.includes("bot can't initiate")
+  );
+}
+
 export class ReminderWorker {
   private readonly db: DatabaseRepository;
   private readonly notification: NotificationProvider;
@@ -148,13 +160,31 @@ export class ReminderWorker {
         });
       }
     } else {
-      // Definite send failure: retry in 2 minutes
-      const retryAt = new Date(now.getTime() + 2 * 60 * 1000).toISOString();
+      const isPermanent = isPermanentTelegramError(sendResult.error);
+      const newFollowUpCount = reminder.follow_up_count + 1;
+      const isMaxReached = this.policy.isMaxReached(
+        newFollowUpCount,
+        reminder.max_follow_ups
+      );
+
+      let retryAt: string | null = null;
+      if (!isPermanent && !isMaxReached) {
+        // Exponential backoff for transient errors: 2, 4, 8... min (capped at 60 min)
+        const backoffMinutes = Math.min(
+          60,
+          2 * Math.pow(2, reminder.follow_up_count)
+        );
+        retryAt = new Date(
+          now.getTime() + backoffMinutes * 60 * 1000
+        ).toISOString();
+      }
+
       await this.db.recordReminderFailure(
         reminder.reminder_id,
         workerToken,
         sendResult.error || 'Unknown Telegram send error',
-        retryAt
+        retryAt,
+        newFollowUpCount
       );
 
       result.failedCount++;
