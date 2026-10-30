@@ -284,6 +284,30 @@ describe('Reminder Lifecycle & Escalation Integration', () => {
     expect(failedRem.last_error).toContain('Telegram API 502');
     // Retried at 10:02:00 UTC (2 minutes later)
     expect(failedRem.scheduled_at).toBe('2026-10-25T10:02:00.000Z');
+    expect(failedRem.follow_up_count).toBe(1);
+  });
+
+  it('marks reminder failed immediately on permanent Telegram errors (e.g. 403 bot blocked)', async () => {
+    const user = await db.getOrCreateUser(111, 111, 'Bob');
+    const { reminder } = await db.createTaskWithReminder(
+      user.id,
+      'Blocked task',
+      '2026-10-25T10:30:00Z',
+      '2026-10-25T10:00:00Z'
+    );
+
+    // Simulate Telegram 403 Forbidden: bot was blocked by the user
+    notification.sendText = vi.fn().mockResolvedValue({
+      ok: false,
+      error: '403 Forbidden: bot was blocked by the user',
+    });
+
+    const runResult = await worker.runBatch();
+    expect(runResult.failedCount).toBe(1);
+
+    const failedRem = (await db.getReminder(reminder.id))!;
+    expect(failedRem.status).toBe('failed');
+    expect(failedRem.last_error).toContain('bot was blocked');
   });
 
   it('rejects callback queries from unauthorized users', async () => {

@@ -600,19 +600,27 @@ export class SupabaseDatabaseRepository implements DatabaseRepository {
     reminderId: string,
     workerToken: string,
     error: string,
-    retryAt: string
+    retryAt: string | null,
+    newFollowUpCount?: number
   ): Promise<boolean> {
     const now = new Date().toISOString();
+    const updatePayload: Record<string, unknown> = {
+      status: retryAt ? 'scheduled' : 'failed',
+      last_error: error,
+      lease_token: null,
+      lease_until: null,
+      updated_at: now,
+    };
+    if (retryAt) {
+      updatePayload.scheduled_at = retryAt;
+    }
+    if (newFollowUpCount !== undefined) {
+      updatePayload.follow_up_count = newFollowUpCount;
+    }
+
     const { data } = await this.client
       .from('reminders')
-      .update({
-        status: 'scheduled',
-        scheduled_at: retryAt,
-        last_error: error,
-        lease_token: null,
-        lease_until: null,
-        updated_at: now,
-      })
+      .update(updatePayload)
       .eq('id', reminderId)
       .eq('lease_token', workerToken)
       .select('id, user_id, task_id')
@@ -622,7 +630,7 @@ export class SupabaseDatabaseRepository implements DatabaseRepository {
       await this.recordEvent(
         data.user_id,
         'reminder_send_failed',
-        { error, retryAt },
+        { error, retryAt, status: updatePayload.status },
         reminderId,
         data.task_id
       );

@@ -125,7 +125,8 @@ export interface DatabaseRepository {
     reminderId: string,
     workerToken: string,
     error: string,
-    retryAt: string
+    retryAt: string | null,
+    newFollowUpCount?: number
   ): Promise<boolean>;
 
   // Audit Events

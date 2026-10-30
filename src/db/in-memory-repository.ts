@@ -541,7 +541,8 @@ export class InMemoryDatabaseRepository implements DatabaseRepository {
     reminderId: string,
     workerToken: string,
     error: string,
-    retryAt: string
+    retryAt: string | null,
+    newFollowUpCount?: number
   ): Promise<boolean> {
     const reminder = this.reminders.get(reminderId);
     if (!reminder || reminder.lease_token !== workerToken) {
@@ -549,8 +550,16 @@ export class InMemoryDatabaseRepository implements DatabaseRepository {
     }
 
     const now = this.clock.now().toISOString();
-    reminder.status = 'scheduled'; // Schedule for retry
-    reminder.scheduled_at = retryAt;
+    if (newFollowUpCount !== undefined) {
+      reminder.follow_up_count = newFollowUpCount;
+    }
+
+    if (retryAt) {
+      reminder.status = 'scheduled'; // Schedule for retry
+      reminder.scheduled_at = retryAt;
+    } else {
+      reminder.status = 'failed';
+    }
     reminder.last_error = error;
     reminder.lease_token = null;
     reminder.lease_until = null;
@@ -559,7 +568,7 @@ export class InMemoryDatabaseRepository implements DatabaseRepository {
     await this.recordEvent(
       reminder.user_id,
       'reminder_send_failed',
-      { error, retryAt },
+      { error, retryAt, status: reminder.status },
       reminderId,
       reminder.task_id
     );
