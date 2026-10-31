@@ -6,14 +6,14 @@ import {
   NotificationProvider,
   SendTextInput,
   SendTextResult,
-  EditMessageTextInput,
+  EditMessageInput,
   AppUser,
 } from '../../src/shared/types.js';
 
 describe('CallbackHandler AI & Settings Callbacks', () => {
   let db: InMemoryDatabaseRepository;
   let sentMessages: SendTextInput[];
-  let editedMessages: EditMessageTextInput[];
+  let editedMessages: EditMessageInput[];
   let answeredQueries: Array<{ id: string; text?: string }>;
   let notification: NotificationProvider;
   let handler: CallbackHandler;
@@ -30,7 +30,7 @@ describe('CallbackHandler AI & Settings Callbacks', () => {
         sentMessages.push(msg);
         return { ok: true, message_id: 100 };
       }),
-      editMessageText: vi.fn().mockImplementation(async (msg: EditMessageTextInput): Promise<boolean> => {
+      editMessageText: vi.fn().mockImplementation(async (msg: EditMessageInput): Promise<boolean> => {
         editedMessages.push(msg);
         return true;
       }),
@@ -151,3 +151,4 @@ describe('CallbackHandler AI & Settings Callbacks', () => {
     expect(editedMessages[1].text).toContain('AI Provider Management');
   });
 });
+
