@@ -17,6 +17,9 @@ import {
   createMemoryListMessage,
   createSettingsMessage,
   createTimezoneSelectMessage,
+  createRoutingModeSelectMessage,
+  createModelSelectMessage,
+  createProviderManageMessage,
 } from './messages.js';
 import { randomBytes } from 'node:crypto';
 import { RoutingMode } from '../ai/router.js';
@@ -71,7 +74,13 @@ export class CallbackHandler {
       } catch {
         await this.notification.answerCallbackQuery(query.id, 'Invalid timezone');
       }
-      data = 'settings:home';
+      const prefs = (await this.db.getUserModelPreferences(user.id)) || {
+        defaultProvider: 'gemini',
+        defaultModel: 'gemini-3.8-flash',
+        routingMode: 'best_available',
+      };
+      await sendOrEdit(createSettingsMessage(chatId, user, prefs));
+      return;
     }
 
     if (data === 'settings:timezone') {
@@ -175,50 +184,45 @@ export class CallbackHandler {
       return;
     }
 
-    if (data === 'ai:mode' || data === 'ai:models') {
-      await this.notification.answerCallbackQuery(query.id, 'Select Mode');
-      await sendOrEdit({
-        chat_id: chatId,
-        text: `🔀 *Choose Your AI Routing Mode:*
-
-• *⚡ Quick Answer*: Low-latency flash models for rapid responses.
-• *🧠 Deep Reasoning*: High-intelligence models for complex questions.
-• *💻 Coding*: Optimized for programming and code review.
-• *💰 Budget*: Cost-efficient / free tier models.
-• *✨ Best Available*: Automatically balances latency, capability & cost.
-• *⚙️ Manual*: Strictly use your manually selected provider & model.`,
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '⚡ Quick Answer', callback_data: 'mode:quick_answer' },
-              { text: '🧠 Deep Reasoning', callback_data: 'mode:deep_reasoning' },
-            ],
-            [
-              { text: '💻 Coding', callback_data: 'mode:coding' },
-              { text: '💰 Budget', callback_data: 'mode:budget' },
-            ],
-            [
-              { text: '✨ Best Available', callback_data: 'mode:best_available' },
-              { text: '⚙️ Manual', callback_data: 'mode:manual' },
-            ],
-            [{ text: '🔙 Back to AI Settings', callback_data: 'ai:home' }],
-          ],
-        },
-      });
+    if (data === 'ai:mode') {
+      const prefs = (await this.db.getUserModelPreferences(user.id)) || {
+        defaultProvider: 'gemini',
+        defaultModel: 'gemini-3.8-flash',
+        routingMode: 'best_available',
+      };
+      await this.notification.answerCallbackQuery(query.id, 'Routing Mode');
+      await sendOrEdit(createRoutingModeSelectMessage(chatId, prefs.routingMode));
       return;
     }
 
-        // 2. Mode selection callback
+    if (data === 'ai:models') {
+      const prefs = (await this.db.getUserModelPreferences(user.id)) || {
+        defaultProvider: 'gemini',
+        defaultModel: 'gemini-3.8-flash',
+        routingMode: 'best_available',
+      };
+      await this.notification.answerCallbackQuery(query.id, 'Select Model');
+      await sendOrEdit(createModelSelectMessage(chatId, prefs.defaultModel, prefs.defaultProvider));
+      return;
+    }
+
+    if (data.startsWith('set_model:')) {
+      const [, modelId, providerId] = data.split(':');
+      await this.db.saveUserModelPreferences(user.id, {
+        defaultModel: modelId,
+        defaultProvider: providerId as ProviderId,
+      });
+      await this.notification.answerCallbackQuery(query.id, `Model set to ${modelId}`);
+      await sendOrEdit(createModelSelectMessage(chatId, modelId, providerId));
+      return;
+    }
+
+    // 2. Mode selection callback
     if (data.startsWith('mode:')) {
       const mode = data.replace('mode:', '') as RoutingMode;
       await this.db.saveUserModelPreferences(user.id, { routingMode: mode });
       await this.notification.answerCallbackQuery(query.id, `Mode set to: ${mode}`);
-      await this.notification.sendText({
-        chat_id: chatId,
-        text: `✅ Routing mode updated to *${mode}*. Future tasks and questions will route accordingly.`,
-        parse_mode: 'Markdown',
-      });
+      await sendOrEdit(createRoutingModeSelectMessage(chatId, mode));
       return;
     }
 
@@ -237,15 +241,29 @@ export class CallbackHandler {
       return;
     }
 
+    // Provider Manage callback
+    if (data.startsWith('provider:manage:')) {
+      const provider = data.replace('provider:manage:', '') as ProviderId;
+      const creds = await this.db.getUserCredentials(user.id);
+      const cred = creds.find(c => c.provider === provider);
+      const maskedKey = cred?.maskedKey || 'Configured via environment';
+      await this.notification.answerCallbackQuery(query.id, `Managing ${provider.toUpperCase()}`);
+      await sendOrEdit(createProviderManageMessage(chatId, provider, maskedKey));
+      return;
+    }
+
     // 4. Provider Disconnect callback
     if (data.startsWith('provider:disconnect:')) {
       const provider = data.replace('provider:disconnect:', '') as ProviderId;
       await this.db.deleteUserCredential(user.id, provider);
       await this.notification.answerCallbackQuery(query.id, `Disconnected ${provider}`);
-      await this.notification.sendText({
-        chat_id: chatId,
-        text: `🔌 Disconnected ${provider.toUpperCase()}. API key removed.`,
-      });
+      const creds = await this.db.getUserCredentials(user.id);
+      await sendOrEdit(
+        createProvidersMenuMessage(
+          chatId,
+          creds.map(c => ({ provider: c.provider, maskedKey: c.maskedKey }))
+        )
+      );
       return;
     }
 
@@ -256,10 +274,7 @@ export class CallbackHandler {
         await this.db.deleteMemory(m.id, user.id);
       }
       await this.notification.answerCallbackQuery(query.id, 'Memories cleared');
-      await this.notification.sendText({
-        chat_id: chatId,
-        text: `🗑️ Cleared all stored personal memories.`,
-      });
+      await sendOrEdit(createMemoryListMessage(chatId, []));
       return;
     }
 

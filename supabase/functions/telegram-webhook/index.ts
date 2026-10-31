@@ -894,6 +894,83 @@ Tap a quick preset below or type \`/settings <Timezone>\` (e.g. \`/settings Asia
     }
   };
 }
+function createRoutingModeSelectMessage(chatId, currentMode) {
+  const modes = [
+    { id: "best_available", label: "\u2728 Best Available", desc: "Balances speed, quality & cost automatically" },
+    { id: "quick_answer", label: "\u26A1 Quick Answer", desc: "Low-latency flash models" },
+    { id: "deep_reasoning", label: "\u{1F9E0} Deep Reasoning", desc: "Advanced reasoning models" },
+    { id: "coding", label: "\u{1F4BB} Coding Mode", desc: "Technical & code execution" },
+    { id: "budget", label: "\u{1F4B0} Budget / Free", desc: "Free-tier & low cost" },
+    { id: "manual", label: "\u2699\uFE0F Manual Selection", desc: "Strictly uses your selected default model" }
+  ];
+  const buttons = modes.map((m) => [
+    {
+      text: m.id === currentMode ? `\u{1F7E2} ${m.label} (Active)` : `\u26AA ${m.label}`,
+      callback_data: `mode:${m.id}`
+    }
+  ]);
+  buttons.push([{ text: "\u{1F519} Back to AI Settings", callback_data: "ai:home" }]);
+  const currentDesc = modes.find((m) => m.id === currentMode)?.desc || "Custom strategy";
+  return {
+    chat_id: chatId,
+    text: `\u{1F500} *Choose Your AI Routing Mode*
+
+*Current Active Strategy:* \`${currentMode}\`
+_${currentDesc}_
+
+Select an automated strategy below for answering questions and extracting tasks:`,
+    parse_mode: "Markdown",
+    reply_markup: { inline_keyboard: buttons }
+  };
+}
+function createModelSelectMessage(chatId, currentModel, currentProvider) {
+  const models = [
+    { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash (Fast & Capable)", provider: "gemini" },
+    { id: "gemini-3.5-flash-lite", name: "Gemini 3.5 Flash Lite (Free & Quick)", provider: "gemini" },
+    { id: "gemini-3.8-pro", name: "Gemini 3.8 Pro (Deep Reasoning)", provider: "gemini" },
+    { id: "gpt-4o-mini", name: "GPT-4o Mini (OpenAI Fast)", provider: "openai" },
+    { id: "gpt-4o", name: "GPT-4o (OpenAI Flagship)", provider: "openai" },
+    { id: "claude-3-5-sonnet-latest", name: "Claude 3.5 Sonnet (Anthropic)", provider: "anthropic" },
+    { id: "claude-3-5-haiku-latest", name: "Claude 3.5 Haiku (Fast)", provider: "anthropic" }
+  ];
+  const buttons = models.map((m) => [
+    {
+      text: m.id === currentModel ? `\u{1F7E2} ${m.name} (Active)` : `\u26AA ${m.name}`,
+      callback_data: `set_model:${m.id}:${m.provider}`
+    }
+  ]);
+  buttons.push([{ text: "\u{1F519} Back to AI Settings", callback_data: "ai:home" }]);
+  return {
+    chat_id: chatId,
+    text: `\u{1F916} *Select Your Primary AI Model*
+
+*Active Model:* \`${currentModel}\` (\`${currentProvider}\`)
+
+Tap any model below to set it as your primary engine:`,
+    parse_mode: "Markdown",
+    reply_markup: { inline_keyboard: buttons }
+  };
+}
+function createProviderManageMessage(chatId, provider, maskedKey) {
+  return {
+    chat_id: chatId,
+    text: `\u{1F50C} *Manage Provider: ${provider.toUpperCase()}*
+
+Status: \u{1F7E2} *Connected & Active*
+Masked Key: \`${maskedKey}\`
+Encryption: *AES-256-GCM*
+
+What would you like to do?`,
+    parse_mode: "Markdown",
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "\u{1F504} Replace API Key", callback_data: `provider:connect:${provider}` }],
+        [{ text: "\u274C Disconnect & Remove Key", callback_data: `provider:disconnect:${provider}` }],
+        [{ text: "\u{1F519} Back to Providers", callback_data: "ai:providers" }]
+      ]
+    }
+  };
+}
 
 // src/bot/telegram-client.ts
 var TelegramClient = class {
@@ -1499,7 +1576,13 @@ var CallbackHandler = class {
       } catch {
         await this.notification.answerCallbackQuery(query.id, "Invalid timezone");
       }
-      data = "settings:home";
+      const prefs = await this.db.getUserModelPreferences(user.id) || {
+        defaultProvider: "gemini",
+        defaultModel: "gemini-3.8-flash",
+        routingMode: "best_available"
+      };
+      await sendOrEdit(createSettingsMessage(chatId, user, prefs));
+      return;
     }
     if (data === "settings:timezone") {
       await this.notification.answerCallbackQuery(query.id, "Select Timezone");
@@ -1607,48 +1690,41 @@ Tell me naturally anytime:
       await sendOrEdit(createMemoryListMessage(chatId, memories));
       return;
     }
-    if (data === "ai:mode" || data === "ai:models") {
-      await this.notification.answerCallbackQuery(query.id, "Select Mode");
-      await sendOrEdit({
-        chat_id: chatId,
-        text: `\u{1F500} *Choose Your AI Routing Mode:*
-
-\u2022 *\u26A1 Quick Answer*: Low-latency flash models for rapid responses.
-\u2022 *\u{1F9E0} Deep Reasoning*: High-intelligence models for complex questions.
-\u2022 *\u{1F4BB} Coding*: Optimized for programming and code review.
-\u2022 *\u{1F4B0} Budget*: Cost-efficient / free tier models.
-\u2022 *\u2728 Best Available*: Automatically balances latency, capability & cost.
-\u2022 *\u2699\uFE0F Manual*: Strictly use your manually selected provider & model.`,
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: "\u26A1 Quick Answer", callback_data: "mode:quick_answer" },
-              { text: "\u{1F9E0} Deep Reasoning", callback_data: "mode:deep_reasoning" }
-            ],
-            [
-              { text: "\u{1F4BB} Coding", callback_data: "mode:coding" },
-              { text: "\u{1F4B0} Budget", callback_data: "mode:budget" }
-            ],
-            [
-              { text: "\u2728 Best Available", callback_data: "mode:best_available" },
-              { text: "\u2699\uFE0F Manual", callback_data: "mode:manual" }
-            ],
-            [{ text: "\u{1F519} Back to AI Settings", callback_data: "ai:home" }]
-          ]
-        }
+    if (data === "ai:mode") {
+      const prefs = await this.db.getUserModelPreferences(user.id) || {
+        defaultProvider: "gemini",
+        defaultModel: "gemini-3.8-flash",
+        routingMode: "best_available"
+      };
+      await this.notification.answerCallbackQuery(query.id, "Routing Mode");
+      await sendOrEdit(createRoutingModeSelectMessage(chatId, prefs.routingMode));
+      return;
+    }
+    if (data === "ai:models") {
+      const prefs = await this.db.getUserModelPreferences(user.id) || {
+        defaultProvider: "gemini",
+        defaultModel: "gemini-3.8-flash",
+        routingMode: "best_available"
+      };
+      await this.notification.answerCallbackQuery(query.id, "Select Model");
+      await sendOrEdit(createModelSelectMessage(chatId, prefs.defaultModel, prefs.defaultProvider));
+      return;
+    }
+    if (data.startsWith("set_model:")) {
+      const [, modelId, providerId] = data.split(":");
+      await this.db.saveUserModelPreferences(user.id, {
+        defaultModel: modelId,
+        defaultProvider: providerId
       });
+      await this.notification.answerCallbackQuery(query.id, `Model set to ${modelId}`);
+      await sendOrEdit(createModelSelectMessage(chatId, modelId, providerId));
       return;
     }
     if (data.startsWith("mode:")) {
       const mode = data.replace("mode:", "");
       await this.db.saveUserModelPreferences(user.id, { routingMode: mode });
       await this.notification.answerCallbackQuery(query.id, `Mode set to: ${mode}`);
-      await this.notification.sendText({
-        chat_id: chatId,
-        text: `\u2705 Routing mode updated to *${mode}*. Future tasks and questions will route accordingly.`,
-        parse_mode: "Markdown"
-      });
+      await sendOrEdit(createRoutingModeSelectMessage(chatId, mode));
       return;
     }
     if (data.startsWith("provider:connect:")) {
@@ -1662,14 +1738,26 @@ Tell me naturally anytime:
       await this.notification.sendText(createConnectLinkMessage(chatId, provider, setupUrl));
       return;
     }
+    if (data.startsWith("provider:manage:")) {
+      const provider = data.replace("provider:manage:", "");
+      const creds = await this.db.getUserCredentials(user.id);
+      const cred = creds.find((c) => c.provider === provider);
+      const maskedKey = cred?.maskedKey || "Configured via environment";
+      await this.notification.answerCallbackQuery(query.id, `Managing ${provider.toUpperCase()}`);
+      await sendOrEdit(createProviderManageMessage(chatId, provider, maskedKey));
+      return;
+    }
     if (data.startsWith("provider:disconnect:")) {
       const provider = data.replace("provider:disconnect:", "");
       await this.db.deleteUserCredential(user.id, provider);
       await this.notification.answerCallbackQuery(query.id, `Disconnected ${provider}`);
-      await this.notification.sendText({
-        chat_id: chatId,
-        text: `\u{1F50C} Disconnected ${provider.toUpperCase()}. API key removed.`
-      });
+      const creds = await this.db.getUserCredentials(user.id);
+      await sendOrEdit(
+        createProvidersMenuMessage(
+          chatId,
+          creds.map((c) => ({ provider: c.provider, maskedKey: c.maskedKey }))
+        )
+      );
       return;
     }
     if (data === "memory:clear_confirm") {
@@ -1678,10 +1766,7 @@ Tell me naturally anytime:
         await this.db.deleteMemory(m.id, user.id);
       }
       await this.notification.answerCallbackQuery(query.id, "Memories cleared");
-      await this.notification.sendText({
-        chat_id: chatId,
-        text: `\u{1F5D1}\uFE0F Cleared all stored personal memories.`
-      });
+      await sendOrEdit(createMemoryListMessage(chatId, []));
       return;
     }
     if (data.startsWith("task_done:")) {

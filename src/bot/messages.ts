@@ -386,3 +386,101 @@ Tap a quick preset below or type \`/settings <Timezone>\` (e.g. \`/settings Asia
     },
   };
 }
+
+export function createRoutingModeSelectMessage(
+  chatId: number,
+  currentMode: string
+): SendTextInput {
+  const modes: Array<{ id: string; label: string; desc: string }> = [
+    { id: 'best_available', label: '✨ Best Available', desc: 'Balances speed, quality & cost automatically' },
+    { id: 'quick_answer', label: '⚡ Quick Answer', desc: 'Low-latency flash models' },
+    { id: 'deep_reasoning', label: '🧠 Deep Reasoning', desc: 'Advanced reasoning models' },
+    { id: 'coding', label: '💻 Coding Mode', desc: 'Technical & code execution' },
+    { id: 'budget', label: '💰 Budget / Free', desc: 'Free-tier & low cost' },
+    { id: 'manual', label: '⚙️ Manual Selection', desc: 'Strictly uses your selected default model' },
+  ];
+
+  const buttons = modes.map(m => [
+    {
+      text: m.id === currentMode ? `🟢 ${m.label} (Active)` : `⚪ ${m.label}`,
+      callback_data: `mode:${m.id}`,
+    },
+  ]);
+
+  buttons.push([{ text: '🔙 Back to AI Settings', callback_data: 'ai:home' }]);
+
+  const currentDesc = modes.find(m => m.id === currentMode)?.desc || 'Custom strategy';
+
+  return {
+    chat_id: chatId,
+    text: `🔀 *Choose Your AI Routing Mode*
+
+*Current Active Strategy:* \`${currentMode}\`
+_${currentDesc}_
+
+Select an automated strategy below for answering questions and extracting tasks:`,
+    parse_mode: 'Markdown',
+    reply_markup: { inline_keyboard: buttons },
+  };
+}
+
+export function createModelSelectMessage(
+  chatId: number,
+  currentModel: string,
+  currentProvider: string
+): SendTextInput {
+  const models = [
+    { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash (Fast & Capable)', provider: 'gemini' },
+    { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite (Free & Quick)', provider: 'gemini' },
+    { id: 'gemini-3.8-pro', name: 'Gemini 3.8 Pro (Deep Reasoning)', provider: 'gemini' },
+    { id: 'gpt-4o-mini', name: 'GPT-4o Mini (OpenAI Fast)', provider: 'openai' },
+    { id: 'gpt-4o', name: 'GPT-4o (OpenAI Flagship)', provider: 'openai' },
+    { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet (Anthropic)', provider: 'anthropic' },
+    { id: 'claude-3-5-haiku-latest', name: 'Claude 3.5 Haiku (Fast)', provider: 'anthropic' },
+  ];
+
+  const buttons = models.map(m => [
+    {
+      text: m.id === currentModel ? `🟢 ${m.name} (Active)` : `⚪ ${m.name}`,
+      callback_data: `set_model:${m.id}:${m.provider}`,
+    },
+  ]);
+
+  buttons.push([{ text: '🔙 Back to AI Settings', callback_data: 'ai:home' }]);
+
+  return {
+    chat_id: chatId,
+    text: `🤖 *Select Your Primary AI Model*
+
+*Active Model:* \`${currentModel}\` (\`${currentProvider}\`)
+
+Tap any model below to set it as your primary engine:`,
+    parse_mode: 'Markdown',
+    reply_markup: { inline_keyboard: buttons },
+  };
+}
+
+export function createProviderManageMessage(
+  chatId: number,
+  provider: string,
+  maskedKey: string
+): SendTextInput {
+  return {
+    chat_id: chatId,
+    text: `🔌 *Manage Provider: ${provider.toUpperCase()}*
+
+Status: 🟢 *Connected & Active*
+Masked Key: \`${maskedKey}\`
+Encryption: *AES-256-GCM*
+
+What would you like to do?`,
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🔄 Replace API Key', callback_data: `provider:connect:${provider}` }],
+        [{ text: '❌ Disconnect & Remove Key', callback_data: `provider:disconnect:${provider}` }],
+        [{ text: '🔙 Back to Providers', callback_data: 'ai:providers' }],
+      ],
+    },
+  };
+}
