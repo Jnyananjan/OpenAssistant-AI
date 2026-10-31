@@ -1570,9 +1570,6 @@ Just reply with the new time, e.g.:
   }
 };
 
-// src/bot/webhook.ts
-import { timingSafeEqual } from "node:crypto";
-
 // src/ai/openai.ts
 var OpenAIProvider = class {
   id = "openai";
@@ -2236,13 +2233,13 @@ function safeCompareSecret(provided, expected) {
   if (!provided || !expected) {
     return false;
   }
-  const bufProvided = Buffer.from(provided, "utf8");
-  const bufExpected = Buffer.from(expected, "utf8");
-  if (bufProvided.length !== bufExpected.length) {
-    timingSafeEqual(bufExpected, bufExpected);
-    return false;
+  const pLen = provided.length;
+  const eLen = expected.length;
+  let diff = pLen ^ eLen;
+  for (let i = 0; i < pLen; i++) {
+    diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i % eLen);
   }
-  return timingSafeEqual(bufProvided, bufExpected);
+  return diff === 0;
 }
 var WebhookController = class {
   webhookSecret;
@@ -3476,11 +3473,20 @@ async function handleTelegramWebhook(req) {
     aiProvider,
     allowlist
   });
-  const result = await controller.handleRequest(secretTokenHeader, update);
-  return new Response(JSON.stringify(result.body), {
-    status: result.statusCode,
-    headers: { "Content-Type": "application/json" }
-  });
+  try {
+    const result = await controller.handleRequest(secretTokenHeader, update);
+    return new Response(JSON.stringify(result.body), {
+      status: result.statusCode,
+      headers: { "Content-Type": "application/json" }
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("Telegram webhook error:", message);
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
 }
 if (typeof Deno !== "undefined" && "serve" in Deno) {
   Deno.serve(handleTelegramWebhook);

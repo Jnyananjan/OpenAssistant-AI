@@ -78,12 +78,20 @@ export async function handleTelegramWebhook(req: Request): Promise<Response> {
     allowlist,
   });
 
-  const result = await controller.handleRequest(secretTokenHeader, update);
-
-  return new Response(JSON.stringify(result.body), {
-    status: result.statusCode,
-    headers: { 'Content-Type': 'application/json' },
-  });
+  try {
+    const result = await controller.handleRequest(secretTokenHeader, update);
+    return new Response(JSON.stringify(result.body), {
+      status: result.statusCode,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('Telegram webhook error:', message);
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 }
 
 // Start Deno server if running in Deno Edge runtime

@@ -1,5 +1,5 @@
 // src/bot/webhook.ts
-import { timingSafeEqual } from 'node:crypto';
+
 import { DatabaseRepository } from '../db/repository.js';
 import {
   NotificationProvider,
@@ -48,14 +48,13 @@ export function safeCompareSecret(
   if (!provided || !expected) {
     return false;
   }
-  const bufProvided = Buffer.from(provided, 'utf8');
-  const bufExpected = Buffer.from(expected, 'utf8');
-  if (bufProvided.length !== bufExpected.length) {
-    // Perform constant-time dummy comparison to prevent timing leaks on length
-    timingSafeEqual(bufExpected, bufExpected);
-    return false;
+  const pLen = provided.length;
+  const eLen = expected.length;
+  let diff = pLen ^ eLen;
+  for (let i = 0; i < pLen; i++) {
+    diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i % eLen);
   }
-  return timingSafeEqual(bufProvided, bufExpected);
+  return diff === 0;
 }
 
 export class WebhookController {
