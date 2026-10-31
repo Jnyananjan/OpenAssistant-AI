@@ -3,6 +3,7 @@ import {
   NotificationProvider,
   SendTextInput,
   SendTextResult,
+  EditMessageInput,
 } from '../shared/types.js';
 
 export interface TelegramClientConfig {
@@ -102,6 +103,29 @@ export class TelegramClient implements NotificationProvider {
         }),
       });
 
+      const data = (await response.json()) as { ok: boolean };
+      return response.ok && Boolean(data.ok);
+    } catch {
+      return false;
+    }
+  }
+
+  async editMessageText(input: EditMessageInput): Promise<boolean> {
+    const url = `${this.baseUrl}/bot${this.botToken}/editMessageText`;
+    const body: Record<string, unknown> = {
+      chat_id: input.chat_id,
+      message_id: input.message_id,
+      text: input.text,
+    };
+    if (input.parse_mode) body.parse_mode = input.parse_mode;
+    if (input.reply_markup) body.reply_markup = input.reply_markup;
+
+    try {
+      const response = await this.fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
       const data = (await response.json()) as { ok: boolean };
       return response.ok && Boolean(data.ok);
     } catch {

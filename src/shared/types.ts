@@ -146,10 +146,19 @@ export interface SendTextResult {
   error?: string;
 }
 
+export interface EditMessageInput {
+  chat_id: number;
+  message_id: number;
+  text: string;
+  parse_mode?: 'Markdown' | 'HTML';
+  reply_markup?: TelegramInlineKeyboardMarkup;
+}
+
 export interface NotificationProvider {
   sendText(input: SendTextInput): Promise<SendTextResult>;
   answerCallbackQuery(callback_query_id: string, text?: string): Promise<boolean>;
   deleteMessage?(chat_id: number, message_id: number): Promise<boolean>;
+  editMessageText?(input: EditMessageInput): Promise<boolean>;
 }
 
 export interface Clock {

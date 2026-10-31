@@ -5,6 +5,8 @@ import {
   TelegramCallbackQuery,
   AppUser,
   Clock,
+  SendTextInput,
+  TelegramInlineKeyboardMarkup,
 } from '../shared/types.js';
 import { formatLocalDateTime } from '../shared/time.js';
 import { SystemClock } from '../shared/clock.js';
@@ -13,6 +15,8 @@ import {
   createProvidersMenuMessage,
   createConnectLinkMessage,
   createMemoryListMessage,
+  createSettingsMessage,
+  createTimezoneSelectMessage,
 } from './messages.js';
 import { randomBytes } from 'node:crypto';
 import { RoutingMode } from '../ai/router.js';
@@ -39,10 +43,101 @@ export class CallbackHandler {
     query: TelegramCallbackQuery,
     user: AppUser
   ): Promise<void> {
-    const data = query.data || '';
+    let data = query.data || '';
     const chatId = query.message?.chat.id || user.telegram_chat_id;
 
-    // 1. AI Navigation Callbacks
+    const sendOrEdit = async (msg: SendTextInput) => {
+      if (query.message?.message_id && this.notification.editMessageText) {
+        const ok = await this.notification.editMessageText({
+          chat_id: chatId,
+          message_id: query.message.message_id,
+          text: msg.text,
+          parse_mode: msg.parse_mode,
+          reply_markup: msg.reply_markup as TelegramInlineKeyboardMarkup,
+        });
+        if (ok) return;
+      }
+      await this.notification.sendText(msg);
+    };
+
+    // 1. Settings & Navigation Callbacks
+    if (data.startsWith('tz:')) {
+      const newTz = data.slice(3);
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: newTz }).format(new Date());
+        const updated = await this.db.updateUserTimezone(user.id, newTz);
+        user.timezone = updated.timezone;
+        await this.notification.answerCallbackQuery(query.id, `Timezone set to ${newTz}`);
+      } catch {
+        await this.notification.answerCallbackQuery(query.id, 'Invalid timezone');
+      }
+      data = 'settings:home';
+    }
+
+    if (data === 'settings:timezone') {
+      await this.notification.answerCallbackQuery(query.id, 'Select Timezone');
+      await sendOrEdit(createTimezoneSelectMessage(chatId, user.timezone));
+      return;
+    }
+
+    if (data === 'settings:home') {
+      await this.notification.answerCallbackQuery(query.id, 'Settings');
+      const prefs = (await this.db.getUserModelPreferences(user.id)) || {
+        defaultProvider: 'gemini',
+        defaultModel: 'gemini-3.8-flash',
+        routingMode: 'best_available',
+      };
+      await sendOrEdit(createSettingsMessage(chatId, user, prefs));
+      return;
+    }
+
+    if (data === 'briefing:run') {
+      await this.notification.answerCallbackQuery(query.id, 'Generating briefing...');
+      const todayTasks = await this.db.listTasks(user.id, 'today', user.timezone);
+      const openTasks = await this.db.listTasks(user.id, 'all', user.timezone);
+      const nowStr = formatLocalDateTime(new Date().toISOString(), user.timezone);
+      let text = `☀️ *Executive Briefing — ${nowStr}*\n\n`;
+      if (todayTasks.length === 0) {
+        text += `🎯 *Today's Focus:* Clear schedule! No tasks due today.\n`;
+      } else {
+        text += `🎯 *Today's Focus (${todayTasks.length} tasks):*\n`;
+        todayTasks.forEach((t, i) => {
+          text += `${i + 1}. *${t.title}*${t.due_at ? ` (Due: ${formatLocalDateTime(t.due_at, user.timezone)})` : ''}\n`;
+        });
+      }
+      text += `\n📋 *Total Active Tasks:* ${openTasks.length}\n`;
+      text += `\nHave a productive day! Reply with any task or expense anytime.`;
+      await this.notification.sendText({ chat_id: chatId, text, parse_mode: 'Markdown' });
+      return;
+    }
+
+    if (data === 'expenses:summary') {
+      await this.notification.answerCallbackQuery(query.id, 'Fetching expenses...');
+      const memories = await this.db.getMemoriesForUser(user.id);
+      const expenseMemories = memories.filter(
+        m =>
+          m.key?.toLowerCase().includes('expense') ||
+          m.content?.toLowerCase().includes('expense') ||
+          m.content?.toLowerCase().includes('spent') ||
+          (m.category as string) === 'finance'
+      );
+      if (expenseMemories.length === 0) {
+        await this.notification.sendText({
+          chat_id: chatId,
+          text: `💰 *Expense Tracker*\n\nNo expenses logged yet.\n\nTell me naturally anytime:\n• "Spent 450 on lunch with team"\n• "Paid $60 for groceries"`,
+          parse_mode: 'Markdown',
+        });
+      } else {
+        let text = `💰 *Recent Logged Expenses:*\n\n`;
+        expenseMemories.slice(-5).forEach(m => {
+          text += `• ${m.content}\n`;
+        });
+        await this.notification.sendText({ chat_id: chatId, text, parse_mode: 'Markdown' });
+      }
+      return;
+    }
+
+    // 2. AI Navigation Callbacks
     if (data === 'ai:home') {
       await this.notification.answerCallbackQuery(query.id, 'AI Settings');
       const prefs = (await this.db.getUserModelPreferences(user.id)) || {
@@ -51,7 +146,7 @@ export class CallbackHandler {
         routingMode: 'best_available',
       };
       const creds = await this.db.getUserCredentials(user.id);
-      await this.notification.sendText(
+      await sendOrEdit(
         createAiSettingsMessage(
           chatId,
           prefs,
@@ -64,7 +159,7 @@ export class CallbackHandler {
     if (data === 'ai:providers') {
       await this.notification.answerCallbackQuery(query.id, 'Providers');
       const creds = await this.db.getUserCredentials(user.id);
-      await this.notification.sendText(
+      await sendOrEdit(
         createProvidersMenuMessage(
           chatId,
           creds.map(c => ({ provider: c.provider, maskedKey: c.maskedKey }))
@@ -76,13 +171,13 @@ export class CallbackHandler {
     if (data === 'ai:memory') {
       await this.notification.answerCallbackQuery(query.id, 'Memory');
       const memories = await this.db.getMemoriesForUser(user.id);
-      await this.notification.sendText(createMemoryListMessage(chatId, memories));
+      await sendOrEdit(createMemoryListMessage(chatId, memories));
       return;
     }
 
     if (data === 'ai:mode' || data === 'ai:models') {
       await this.notification.answerCallbackQuery(query.id, 'Select Mode');
-      await this.notification.sendText({
+      await sendOrEdit({
         chat_id: chatId,
         text: `🔀 *Choose Your AI Routing Mode:*
 
@@ -114,7 +209,7 @@ export class CallbackHandler {
       return;
     }
 
-    // 2. Mode selection callback
+        // 2. Mode selection callback
     if (data.startsWith('mode:')) {
       const mode = data.replace('mode:', '') as RoutingMode;
       await this.db.saveUserModelPreferences(user.id, { routingMode: mode });

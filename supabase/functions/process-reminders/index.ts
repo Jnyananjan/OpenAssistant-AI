@@ -277,6 +277,27 @@ var TelegramClient = class {
       return false;
     }
   }
+  async editMessageText(input) {
+    const url = `${this.baseUrl}/bot${this.botToken}/editMessageText`;
+    const body = {
+      chat_id: input.chat_id,
+      message_id: input.message_id,
+      text: input.text
+    };
+    if (input.parse_mode) body.parse_mode = input.parse_mode;
+    if (input.reply_markup) body.reply_markup = input.reply_markup;
+    try {
+      const response = await this.fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await response.json();
+      return response.ok && Boolean(data.ok);
+    } catch {
+      return false;
+    }
+  }
 };
 
 // src/bot/commands.ts

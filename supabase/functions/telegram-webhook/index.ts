@@ -613,12 +613,20 @@ I am your personal productivity assistant on Telegram. I help you capture tasks 
 \u2022 "Submit the expense report by Friday 3 PM"
 \u2022 "Call Mom at 8 PM tonight"
 
-\u{1F4CC} *Useful commands:*
-/today \u2014 View today's tasks & reminders
-/tasks \u2014 View all open tasks
-/add \u2014 Create a new task step-by-step
-/settings \u2014 View your timezone and preferences
-/help \u2014 Show commands & security guidelines
+\u{1F4CC} *Available Commands:*
+\u2022 /today \u2014 View today's tasks & upcoming reminders
+\u2022 /tasks \u2014 List all open tasks
+\u2022 /add \u2014 Create a new task step-by-step
+\u2022 /done \u2014 Complete a task
+\u2022 /snooze \u2014 Snooze active reminder
+\u2022 /briefing \u2014 Morning executive briefing on demand
+\u2022 /expenses \u2014 View spending breakdown & summary
+\u2022 /memory \u2014 Facts & preferences remembered
+\u2022 /ai \u2014 Multi-provider AI model settings
+\u2022 /models \u2014 Change AI routing mode (Quick, Deep, Coding, Budget)
+\u2022 /providers \u2014 Connect API keys (Gemini, OpenAI, Claude, Groq)
+\u2022 /settings \u2014 Timezone & preferences
+\u2022 /help \u2014 Full commands & guide
 
 Just send me a message to get started!`;
   return {
@@ -636,7 +644,13 @@ function createHelpMessage(chatId) {
 \u2022 /add \u2014 Create a new task
 \u2022 /done \u2014 Mark a task complete
 \u2022 /snooze \u2014 Snooze the latest active reminder
-\u2022 /settings \u2014 Check and adjust your timezone
+\u2022 /briefing \u2014 Morning executive briefing on demand
+\u2022 /expenses \u2014 View spending breakdown & summary
+\u2022 /memory \u2014 Facts & preferences remembered
+\u2022 /ai \u2014 Multi-provider AI model settings
+\u2022 /models \u2014 Change AI routing mode
+\u2022 /providers \u2014 Connect personal API keys
+\u2022 /settings \u2014 Timezone & preferences
 \u2022 /cancel \u2014 Cancel an active flow or task
 
 \u{1F6E1}\uFE0F *Privacy & Security:*
@@ -815,6 +829,71 @@ _...and ${memories.length - 10} more memories._`;
     }
   };
 }
+function createSettingsMessage(chatId, user, prefs) {
+  const nowStr = formatLocalDateTime((/* @__PURE__ */ new Date()).toISOString(), user.timezone);
+  const text = `\u2699\uFE0F *OpenAssistant AI \u2014 System Settings*
+
+\u{1F464} *Profile & Local Time:*
+\u2022 *Timezone:* \`${user.timezone}\`
+\u2022 *Current Local Time:* ${nowStr}
+
+\u23F0 *Automated Briefings:*
+\u2022 \u2600\uFE0F *Morning Briefing:* 8:00 AM (Priority tasks & schedule summary)
+\u2022 \u{1F319} *Nightly Rollover:* 9:30 PM (Rolls overdue tasks to tomorrow)
+\u2022 \u{1F501} *Max Follow-ups:* 8 attempts
+
+\u{1F916} *AI Engine & Routing:*
+\u2022 *Routing Mode:* \`${prefs.routingMode}\`
+\u2022 *Default Model:* \`${prefs.defaultModel}\` (\`${prefs.defaultProvider}\`)
+
+To update your timezone directly, tap below or type:
+\`/settings Asia/Kolkata\``;
+  return {
+    chat_id: chatId,
+    text,
+    parse_mode: "Markdown",
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "\u{1F310} Change Timezone", callback_data: "settings:timezone" },
+          { text: "\u{1F916} AI Settings", callback_data: "ai:home" }
+        ],
+        [
+          { text: "\u2600\uFE0F Trigger Briefing Now", callback_data: "briefing:run" },
+          { text: "\u{1F4CA} Expense Summary", callback_data: "expenses:summary" }
+        ]
+      ]
+    }
+  };
+}
+function createTimezoneSelectMessage(chatId, currentTimezone) {
+  return {
+    chat_id: chatId,
+    text: `\u{1F310} *Select Your Timezone*
+
+Current timezone: \`${currentTimezone}\`
+
+Tap a quick preset below or type \`/settings <Timezone>\` (e.g. \`/settings Asia/Dubai\`):`,
+    parse_mode: "Markdown",
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "\u{1F1EE}\u{1F1F3} India (IST)", callback_data: "tz:Asia/Kolkata" },
+          { text: "\u{1F1FA}\u{1F1F8} US Eastern (EST)", callback_data: "tz:America/New_York" }
+        ],
+        [
+          { text: "\u{1F1FA}\u{1F1F8} US Pacific (PST)", callback_data: "tz:America/Los_Angeles" },
+          { text: "\u{1F1EC}\u{1F1E7} London (GMT)", callback_data: "tz:Europe/London" }
+        ],
+        [
+          { text: "\u{1F310} UTC", callback_data: "tz:UTC" },
+          { text: "\u{1F1E6}\u{1F1EA} Dubai (GST)", callback_data: "tz:Asia/Dubai" }
+        ],
+        [{ text: "\u{1F519} Back to Settings", callback_data: "settings:home" }]
+      ]
+    }
+  };
+}
 
 // src/bot/telegram-client.ts
 var TelegramClient = class {
@@ -890,6 +969,27 @@ var TelegramClient = class {
           chat_id,
           message_id
         })
+      });
+      const data = await response.json();
+      return response.ok && Boolean(data.ok);
+    } catch {
+      return false;
+    }
+  }
+  async editMessageText(input) {
+    const url = `${this.baseUrl}/bot${this.botToken}/editMessageText`;
+    const body = {
+      chat_id: input.chat_id,
+      message_id: input.message_id,
+      text: input.text
+    };
+    if (input.parse_mode) body.parse_mode = input.parse_mode;
+    if (input.reply_markup) body.reply_markup = input.reply_markup;
+    try {
+      const response = await this.fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
       });
       const data = await response.json();
       return response.ok && Boolean(data.ok);
@@ -1059,17 +1159,12 @@ Please specify the task title and optional deadline, for example:
             });
           }
         } else {
-          await this.notification.sendText({
-            chat_id: chatId,
-            text: `\u2699\uFE0F *Your OpenAssistant AI Settings*
-
-\u2022 *Timezone:* \`${user.timezone}\`
-\u2022 *Max Follow-ups:* 8
-
-To update your timezone, type:
-\`/settings Asia/Kolkata\` (or your local timezone)`,
-            parse_mode: "Markdown"
-          });
+          const prefs = await this.db.getUserModelPreferences(user.id) || {
+            defaultProvider: "gemini",
+            defaultModel: "gemini-3.8-flash",
+            routingMode: "best_available"
+          };
+          await this.notification.sendText(createSettingsMessage(chatId, user, prefs));
         }
         break;
       case "/ai": {
@@ -1240,6 +1335,71 @@ _Note: Usage limits and token consumption are tracked directly by your configure
         await this.notification.sendText(createMemoryListMessage(chatId, memories));
         break;
       }
+      case "/briefing": {
+        const todayTasks = await this.db.listTasks(user.id, "today", user.timezone);
+        const openTasks = await this.db.listTasks(user.id, "all", user.timezone);
+        const nowStr = formatLocalDateTime((/* @__PURE__ */ new Date()).toISOString(), user.timezone);
+        let text2 = `\u2600\uFE0F *Executive Briefing \u2014 ${nowStr}*
+
+`;
+        if (todayTasks.length === 0) {
+          text2 += `\u{1F3AF} *Today's Focus:* Clear schedule! No tasks due today.
+`;
+        } else {
+          text2 += `\u{1F3AF} *Today's Focus (${todayTasks.length} tasks):*
+`;
+          todayTasks.forEach((t, i) => {
+            text2 += `${i + 1}. *${t.title}*${t.due_at ? ` (Due: ${formatLocalDateTime(t.due_at, user.timezone)})` : ""}
+`;
+          });
+        }
+        text2 += `
+\u{1F4CB} *Total Active Tasks:* ${openTasks.length}
+`;
+        text2 += `
+Have a productive day! Reply with any task or expense anytime.`;
+        await this.notification.sendText({
+          chat_id: chatId,
+          text: text2,
+          parse_mode: "Markdown"
+        });
+        break;
+      }
+      case "/expenses": {
+        const memories = await this.db.getMemoriesForUser(user.id);
+        const expenseMemories = memories.filter(
+          (m) => m.key?.toLowerCase().includes("expense") || m.content?.toLowerCase().includes("expense") || m.content?.toLowerCase().includes("spent") || m.category === "finance"
+        );
+        if (expenseMemories.length === 0) {
+          await this.notification.sendText({
+            chat_id: chatId,
+            text: `\u{1F4B0} *Expense Tracker*
+
+No expenses logged yet.
+
+To log an expense, simply tell me naturally:
+\u2022 "Spent 450 on lunch with team"
+\u2022 "Paid $60 for groceries"`,
+            parse_mode: "Markdown"
+          });
+        } else {
+          let text2 = `\u{1F4B0} *Recent Logged Expenses:*
+
+`;
+          expenseMemories.slice(-5).forEach((m) => {
+            text2 += `\u2022 ${m.content}
+`;
+          });
+          text2 += `
+Tell me any new expense anytime to log it automatically!`;
+          await this.notification.sendText({
+            chat_id: chatId,
+            text: text2,
+            parse_mode: "Markdown"
+          });
+        }
+        break;
+      }
       case "/cancel":
         if (args) {
           const task = await this.db.findTaskByTitle(user.id, args);
@@ -1314,8 +1474,105 @@ var CallbackHandler = class {
     this.clock = config.clock || new SystemClock();
   }
   async handleCallback(query, user) {
-    const data = query.data || "";
+    let data = query.data || "";
     const chatId = query.message?.chat.id || user.telegram_chat_id;
+    const sendOrEdit = async (msg) => {
+      if (query.message?.message_id && this.notification.editMessageText) {
+        const ok = await this.notification.editMessageText({
+          chat_id: chatId,
+          message_id: query.message.message_id,
+          text: msg.text,
+          parse_mode: msg.parse_mode,
+          reply_markup: msg.reply_markup
+        });
+        if (ok) return;
+      }
+      await this.notification.sendText(msg);
+    };
+    if (data.startsWith("tz:")) {
+      const newTz = data.slice(3);
+      try {
+        new Intl.DateTimeFormat("en-US", { timeZone: newTz }).format(/* @__PURE__ */ new Date());
+        const updated = await this.db.updateUserTimezone(user.id, newTz);
+        user.timezone = updated.timezone;
+        await this.notification.answerCallbackQuery(query.id, `Timezone set to ${newTz}`);
+      } catch {
+        await this.notification.answerCallbackQuery(query.id, "Invalid timezone");
+      }
+      data = "settings:home";
+    }
+    if (data === "settings:timezone") {
+      await this.notification.answerCallbackQuery(query.id, "Select Timezone");
+      await sendOrEdit(createTimezoneSelectMessage(chatId, user.timezone));
+      return;
+    }
+    if (data === "settings:home") {
+      await this.notification.answerCallbackQuery(query.id, "Settings");
+      const prefs = await this.db.getUserModelPreferences(user.id) || {
+        defaultProvider: "gemini",
+        defaultModel: "gemini-3.8-flash",
+        routingMode: "best_available"
+      };
+      await sendOrEdit(createSettingsMessage(chatId, user, prefs));
+      return;
+    }
+    if (data === "briefing:run") {
+      await this.notification.answerCallbackQuery(query.id, "Generating briefing...");
+      const todayTasks = await this.db.listTasks(user.id, "today", user.timezone);
+      const openTasks = await this.db.listTasks(user.id, "all", user.timezone);
+      const nowStr = formatLocalDateTime((/* @__PURE__ */ new Date()).toISOString(), user.timezone);
+      let text = `\u2600\uFE0F *Executive Briefing \u2014 ${nowStr}*
+
+`;
+      if (todayTasks.length === 0) {
+        text += `\u{1F3AF} *Today's Focus:* Clear schedule! No tasks due today.
+`;
+      } else {
+        text += `\u{1F3AF} *Today's Focus (${todayTasks.length} tasks):*
+`;
+        todayTasks.forEach((t, i) => {
+          text += `${i + 1}. *${t.title}*${t.due_at ? ` (Due: ${formatLocalDateTime(t.due_at, user.timezone)})` : ""}
+`;
+        });
+      }
+      text += `
+\u{1F4CB} *Total Active Tasks:* ${openTasks.length}
+`;
+      text += `
+Have a productive day! Reply with any task or expense anytime.`;
+      await this.notification.sendText({ chat_id: chatId, text, parse_mode: "Markdown" });
+      return;
+    }
+    if (data === "expenses:summary") {
+      await this.notification.answerCallbackQuery(query.id, "Fetching expenses...");
+      const memories = await this.db.getMemoriesForUser(user.id);
+      const expenseMemories = memories.filter(
+        (m) => m.key?.toLowerCase().includes("expense") || m.content?.toLowerCase().includes("expense") || m.content?.toLowerCase().includes("spent") || m.category === "finance"
+      );
+      if (expenseMemories.length === 0) {
+        await this.notification.sendText({
+          chat_id: chatId,
+          text: `\u{1F4B0} *Expense Tracker*
+
+No expenses logged yet.
+
+Tell me naturally anytime:
+\u2022 "Spent 450 on lunch with team"
+\u2022 "Paid $60 for groceries"`,
+          parse_mode: "Markdown"
+        });
+      } else {
+        let text = `\u{1F4B0} *Recent Logged Expenses:*
+
+`;
+        expenseMemories.slice(-5).forEach((m) => {
+          text += `\u2022 ${m.content}
+`;
+        });
+        await this.notification.sendText({ chat_id: chatId, text, parse_mode: "Markdown" });
+      }
+      return;
+    }
     if (data === "ai:home") {
       await this.notification.answerCallbackQuery(query.id, "AI Settings");
       const prefs = await this.db.getUserModelPreferences(user.id) || {
@@ -1324,7 +1581,7 @@ var CallbackHandler = class {
         routingMode: "best_available"
       };
       const creds = await this.db.getUserCredentials(user.id);
-      await this.notification.sendText(
+      await sendOrEdit(
         createAiSettingsMessage(
           chatId,
           prefs,
@@ -1336,7 +1593,7 @@ var CallbackHandler = class {
     if (data === "ai:providers") {
       await this.notification.answerCallbackQuery(query.id, "Providers");
       const creds = await this.db.getUserCredentials(user.id);
-      await this.notification.sendText(
+      await sendOrEdit(
         createProvidersMenuMessage(
           chatId,
           creds.map((c) => ({ provider: c.provider, maskedKey: c.maskedKey }))
@@ -1347,12 +1604,12 @@ var CallbackHandler = class {
     if (data === "ai:memory") {
       await this.notification.answerCallbackQuery(query.id, "Memory");
       const memories = await this.db.getMemoriesForUser(user.id);
-      await this.notification.sendText(createMemoryListMessage(chatId, memories));
+      await sendOrEdit(createMemoryListMessage(chatId, memories));
       return;
     }
     if (data === "ai:mode" || data === "ai:models") {
       await this.notification.answerCallbackQuery(query.id, "Select Mode");
-      await this.notification.sendText({
+      await sendOrEdit({
         chat_id: chatId,
         text: `\u{1F500} *Choose Your AI Routing Mode:*
 

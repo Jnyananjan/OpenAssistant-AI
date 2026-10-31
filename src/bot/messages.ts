@@ -16,12 +16,20 @@ I am your personal productivity assistant on Telegram. I help you capture tasks 
 • "Submit the expense report by Friday 3 PM"
 • "Call Mom at 8 PM tonight"
 
-📌 *Useful commands:*
-/today — View today's tasks & reminders
-/tasks — View all open tasks
-/add — Create a new task step-by-step
-/settings — View your timezone and preferences
-/help — Show commands & security guidelines
+📌 *Available Commands:*
+• /today — View today's tasks & upcoming reminders
+• /tasks — List all open tasks
+• /add — Create a new task step-by-step
+• /done — Complete a task
+• /snooze — Snooze active reminder
+• /briefing — Morning executive briefing on demand
+• /expenses — View spending breakdown & summary
+• /memory — Facts & preferences remembered
+• /ai — Multi-provider AI model settings
+• /models — Change AI routing mode (Quick, Deep, Coding, Budget)
+• /providers — Connect API keys (Gemini, OpenAI, Claude, Groq)
+• /settings — Timezone & preferences
+• /help — Full commands & guide
 
 Just send me a message to get started!`;
 
@@ -41,7 +49,13 @@ export function createHelpMessage(chatId: number): SendTextInput {
 • /add — Create a new task
 • /done — Mark a task complete
 • /snooze — Snooze the latest active reminder
-• /settings — Check and adjust your timezone
+• /briefing — Morning executive briefing on demand
+• /expenses — View spending breakdown & summary
+• /memory — Facts & preferences remembered
+• /ai — Multi-provider AI model settings
+• /models — Change AI routing mode
+• /providers — Connect personal API keys
+• /settings — Timezone & preferences
 • /cancel — Cancel an active flow or task
 
 🛡️ *Privacy & Security:*
@@ -296,6 +310,78 @@ export function createMemoryListMessage(
       inline_keyboard: [
         [{ text: '🗑️ Forget All', callback_data: 'memory:clear_confirm' }],
         [{ text: '🔙 Back to AI Settings', callback_data: 'ai:home' }],
+      ],
+    },
+  };
+}
+
+export function createSettingsMessage(
+  chatId: number,
+  user: { timezone: string },
+  prefs: { defaultProvider: string; defaultModel: string; routingMode: string }
+): SendTextInput {
+  const nowStr = formatLocalDateTime(new Date().toISOString(), user.timezone);
+  const text = `⚙️ *OpenAssistant AI — System Settings*
+
+👤 *Profile & Local Time:*
+• *Timezone:* \`${user.timezone}\`
+• *Current Local Time:* ${nowStr}
+
+⏰ *Automated Briefings:*
+• ☀️ *Morning Briefing:* 8:00 AM (Priority tasks & schedule summary)
+• 🌙 *Nightly Rollover:* 9:30 PM (Rolls overdue tasks to tomorrow)
+• 🔁 *Max Follow-ups:* 8 attempts
+
+🤖 *AI Engine & Routing:*
+• *Routing Mode:* \`${prefs.routingMode}\`
+• *Default Model:* \`${prefs.defaultModel}\` (\`${prefs.defaultProvider}\`)
+
+To update your timezone directly, tap below or type:
+\`/settings Asia/Kolkata\``;
+
+  return {
+    chat_id: chatId,
+    text,
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '🌐 Change Timezone', callback_data: 'settings:timezone' },
+          { text: '🤖 AI Settings', callback_data: 'ai:home' },
+        ],
+        [
+          { text: '☀️ Trigger Briefing Now', callback_data: 'briefing:run' },
+          { text: '📊 Expense Summary', callback_data: 'expenses:summary' },
+        ],
+      ],
+    },
+  };
+}
+
+export function createTimezoneSelectMessage(chatId: number, currentTimezone: string): SendTextInput {
+  return {
+    chat_id: chatId,
+    text: `🌐 *Select Your Timezone*
+
+Current timezone: \`${currentTimezone}\`
+
+Tap a quick preset below or type \`/settings <Timezone>\` (e.g. \`/settings Asia/Dubai\`):`,
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '🇮🇳 India (IST)', callback_data: 'tz:Asia/Kolkata' },
+          { text: '🇺🇸 US Eastern (EST)', callback_data: 'tz:America/New_York' },
+        ],
+        [
+          { text: '🇺🇸 US Pacific (PST)', callback_data: 'tz:America/Los_Angeles' },
+          { text: '🇬🇧 London (GMT)', callback_data: 'tz:Europe/London' },
+        ],
+        [
+          { text: '🌐 UTC', callback_data: 'tz:UTC' },
+          { text: '🇦🇪 Dubai (GST)', callback_data: 'tz:Asia/Dubai' },
+        ],
+        [{ text: '🔙 Back to Settings', callback_data: 'settings:home' }],
       ],
     },
   };

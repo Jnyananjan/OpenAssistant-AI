@@ -12,6 +12,7 @@ import {
   createProvidersMenuMessage,
   createConnectLinkMessage,
   createMemoryListMessage,
+  createSettingsMessage,
 } from './messages.js';
 import { formatLocalDateTime } from '../shared/time.js';
 import { randomBytes } from 'node:crypto';
@@ -145,11 +146,12 @@ export class CommandHandler {
             });
           }
         } else {
-          await this.notification.sendText({
-            chat_id: chatId,
-            text: `⚙️ *Your OpenAssistant AI Settings*\n\n• *Timezone:* \`${user.timezone}\`\n• *Max Follow-ups:* 8\n\nTo update your timezone, type:\n\`/settings Asia/Kolkata\` (or your local timezone)`,
-            parse_mode: 'Markdown',
-          });
+          const prefs = (await this.db.getUserModelPreferences(user.id)) || {
+            defaultProvider: 'gemini',
+            defaultModel: 'gemini-3.8-flash',
+            routingMode: 'best_available',
+          };
+          await this.notification.sendText(createSettingsMessage(chatId, user, prefs));
         }
         break;
 
@@ -335,6 +337,59 @@ _Note: Usage limits and token consumption are tracked directly by your configure
       case '/memory': {
         const memories = await this.db.getMemoriesForUser(user.id);
         await this.notification.sendText(createMemoryListMessage(chatId, memories));
+        break;
+      }
+
+      case '/briefing': {
+        const todayTasks = await this.db.listTasks(user.id, 'today', user.timezone);
+        const openTasks = await this.db.listTasks(user.id, 'all', user.timezone);
+        const nowStr = formatLocalDateTime(new Date().toISOString(), user.timezone);
+        let text = `☀️ *Executive Briefing — ${nowStr}*\n\n`;
+        if (todayTasks.length === 0) {
+          text += `🎯 *Today's Focus:* Clear schedule! No tasks due today.\n`;
+        } else {
+          text += `🎯 *Today's Focus (${todayTasks.length} tasks):*\n`;
+          todayTasks.forEach((t, i) => {
+            text += `${i + 1}. *${t.title}*${t.due_at ? ` (Due: ${formatLocalDateTime(t.due_at, user.timezone)})` : ''}\n`;
+          });
+        }
+        text += `\n📋 *Total Active Tasks:* ${openTasks.length}\n`;
+        text += `\nHave a productive day! Reply with any task or expense anytime.`;
+        await this.notification.sendText({
+          chat_id: chatId,
+          text,
+          parse_mode: 'Markdown',
+        });
+        break;
+      }
+
+      case '/expenses': {
+        const memories = await this.db.getMemoriesForUser(user.id);
+        const expenseMemories = memories.filter(
+          m =>
+            m.key?.toLowerCase().includes('expense') ||
+            m.content?.toLowerCase().includes('expense') ||
+            m.content?.toLowerCase().includes('spent') ||
+            (m.category as string) === 'finance'
+        );
+        if (expenseMemories.length === 0) {
+          await this.notification.sendText({
+            chat_id: chatId,
+            text: `💰 *Expense Tracker*\n\nNo expenses logged yet.\n\nTo log an expense, simply tell me naturally:\n• "Spent 450 on lunch with team"\n• "Paid $60 for groceries"`,
+            parse_mode: 'Markdown',
+          });
+        } else {
+          let text = `💰 *Recent Logged Expenses:*\n\n`;
+          expenseMemories.slice(-5).forEach(m => {
+            text += `• ${m.content}\n`;
+          });
+          text += `\nTell me any new expense anytime to log it automatically!`;
+          await this.notification.sendText({
+            chat_id: chatId,
+            text,
+            parse_mode: 'Markdown',
+          });
+        }
         break;
       }
 
