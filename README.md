@@ -5,16 +5,15 @@
 </p>
 
 <p align="center">
-  <strong>An open-source, Telegram-first personal AI assistant with proactive escalating reminders, multi-provider model routing, and persistent long-term memory.</strong>
+  <strong>An open-source personal AI assistant on Telegram with persistent escalating follow-ups, multi-model routing, batch task scheduling, and automated morning intelligence digests.</strong>
 </p>
 
 <p align="center">
   <a href="https://github.com/Jnyananjan/OpenAssistant-AI/releases"><img src="https://img.shields.io/github/v/release/Jnyananjan/OpenAssistant-AI?color=brightgreen&label=Release" alt="Latest Release" /></a>
   <a href="https://github.com/Jnyananjan/OpenAssistant-AI/actions/workflows/ci.yml"><img src="https://github.com/Jnyananjan/OpenAssistant-AI/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License" /></a>
-  <a href="https://github.com/Jnyananjan/OpenAssistant-AI/stargazers"><img src="https://img.shields.io/github/stars/Jnyananjan/OpenAssistant-AI?style=social" alt="GitHub Stars" /></a>
-  <a href="https://github.com/Jnyananjan/OpenAssistant-AI/network/members"><img src="https://img.shields.io/github/forks/Jnyananjan/OpenAssistant-AI?style=social" alt="GitHub Forks" /></a>
-  <a href="https://github.com/Jnyananjan/OpenAssistant-AI/issues"><img src="https://img.shields.io/github/issues/Jnyananjan/OpenAssistant-AI?color=orange" alt="Issues" /></a>
+  <a href="https://github.com/Jnyananjan/OpenAssistant-AI/discussions"><img src="https://img.shields.io/badge/Discussions-Join-purple.svg" alt="Discussions" /></a>
+  <a href="https://github.com/Jnyananjan/OpenAssistant-AI/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22"><img src="https://img.shields.io/badge/Good_First_Issues-Open-success.svg" alt="Good First Issues" /></a>
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome" /></a>
 </p>
 
@@ -69,11 +68,14 @@ OpenAssistant: "⚠️ Follow-up 1/8: 'Submit quarterly audit report' is still p
 ## Features
 
 - 💬 **Telegram-First Productivity:** Natural-language conversational interface. Type `"Remind me to call Mom at 6 PM"` or `"Drink water in 30 minutes"` to schedule tasks instantly.
+- 📋 **Batch Multi-Task Scheduling:** Paste a list of multiple tasks or deadlines in a single message (e.g. *"next week: EVS exam, Python presentation, CE review"*). OpenAssistant AI parses and schedules every deadline individually.
 - ⏰ **Proactive Escalating Reminders:** Never miss a task again. If an alert is ignored, OpenAssistant AI follows up automatically (10m, 30m, 60m up to 8 configurable attempts) with inline action buttons (**Done**, **Snooze 1h**, **Reschedule**).
-- ⚡ **Ultra-Fast Edge Inference:** Powered by Google Gemini (`gemini-3.5-flash-lite`) and Groq LPU inference for instant, sub-second responses without lag.
+- 📰 **Automated Daily Topic Digests:** Receive an 8:00 AM daily briefing featuring your schedule alongside live, structured news gists on your tracked topics (configured via `/topics AI, ML, Robotics`).
+- 🔀 **In-Chat Multi-Provider Model Switching:** Switch models (`gemini-3.5-flash-lite`, `gpt-4o-mini`, `claude-3-5-sonnet`) and automated routing modes (Quick, Deep Reasoning, Coding, Budget) with live interactive status indicators.
+- ⚡ **Ultra-Fast Edge Inference:** Powered by Google Gemini and Groq LPU inference for instant, sub-second responses without lag.
 - 🎛️ **Modern Operations Cockpit:** Integrated web dashboard on `http://localhost:3000` to inspect live health, trigger instant reminders, pause/resume, snooze, acknowledge, or delete tasks.
 - 🧠 **Persistent Long-Term Memory:** Remembers facts, user preferences, project context, and relationship details across conversations.
-- 🔀 **Multi-Provider AI Routing:** Connect your own API keys for Google AI Studio, Groq, OpenAI, Claude, or OpenRouter with zero vendor lock-in.
+- 🔌 **Private Extensions Directory:** Add your private tools, custom webhooks, or personal API integrations inside `src/custom/` (gitignored). They compile during deployment while keeping your public repo 100% clean.
 - 🛡️ **Zero-Trust Security:** Local credentials sealed with AES-256-GCM encryption (`scrypt`), Telegram sender allowlist enforcement, and strict secret verification.
 
 ---
@@ -211,12 +213,14 @@ If you find OpenAssistant AI useful, please consider giving the repository a **S
 
 ---
 
-## Contributing
+## Contributing & Community
 
 Contributions, bug reports, and feature suggestions are warmly welcomed!
-- Read our [Contributing Guidelines](CONTRIBUTING.md) to get started.
-- Check out the [Architecture Documentation](docs/ARCHITECTURE.md) to understand the internals.
-- For security issues, please see [SECURITY.md](SECURITY.md).
+
+- 🚀 **Looking for a place to start?** Browse our [Good First Issues](https://github.com/Jnyananjan/OpenAssistant-AI/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
+- 💬 **Got an idea or question?** Join our [GitHub Discussions](https://github.com/Jnyananjan/OpenAssistant-AI/discussions).
+- 📖 **New here?** Read our [Contributing Guidelines](CONTRIBUTING.md) to get your local environment running.
+- 🛡️ **Security concerns?** Please review [SECURITY.md](SECURITY.md) to report responsibly.
 
 ---
 

@@ -32,3 +32,4 @@ Format rules:
   }
   return '';
 }
+

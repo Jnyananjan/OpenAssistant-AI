@@ -1,0 +1,59 @@
+name: 🐛 Bug Report
+description: Create a report to help us fix an issue or broken behavior.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue! Please provide as much detail as possible.
+  - type: input
+    id: version
+    attributes:
+      label: OpenAssistant AI Version
+      description: What version or commit are you running? (e.g. v0.2.0 or commit hash)
+      placeholder: v0.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment Target
+      description: Where is your instance hosted?
+      options:
+        - Supabase Edge Functions (Default)
+        - Local Node.js / Docker
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Bug
+      description: A clear and concise description of what went wrong.
+      placeholder: When I click the Snooze button, the reminder doesn't acknowledge...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Exact steps or Telegram message inputs to reproduce the behavior.
+      value: |
+        1. Send message: '...'
+        2. Tap button: '...'
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs or Error Output
+      description: Paste any error messages from Edge Function logs or browser terminal.
+      render: shell

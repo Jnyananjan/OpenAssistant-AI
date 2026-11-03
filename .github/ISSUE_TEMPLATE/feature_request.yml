@@ -1,0 +1,35 @@
+name: 💡 Feature Request
+description: Suggest an idea, new integration, or enhancement for OpenAssistant AI.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        We welcome feature ideas and new integration proposals!
+  - type: textarea
+    id: problem
+    attributes:
+      label: Is your feature request related to a problem?
+      description: A clear description of what the current friction or limitation is.
+      placeholder: I'm always frustrated when I want to sync tasks to my Google Calendar...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like to see implemented.
+      placeholder: Add a Google Calendar integration that automatically creates an event...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or workarounds you've evaluated.
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Willing to Contribute?
+      options:
+        - label: I would be interested in submitting a Pull Request for this feature!

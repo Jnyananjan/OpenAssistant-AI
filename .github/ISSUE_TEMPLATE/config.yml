@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Community Discussions & Questions
+    url: https://github.com/Jnyananjan/OpenAssistant-AI/discussions
+    about: Ask questions, share your personal setup, or discuss new ideas with the community.
+  - name: 🛡️ Security Vulnerabilities
+    url: https://github.com/Jnyananjan/OpenAssistant-AI/security/policy
+    about: Please report sensitive security vulnerabilities privately according to our SECURITY.md.
