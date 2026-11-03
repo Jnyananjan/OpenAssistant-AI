@@ -461,6 +461,9 @@ var GeminiProvider = class {
     this.baseUrl = config?.baseUrl || "https://generativelanguage.googleapis.com/v1beta";
     this.fetch = config?.fetchFn || globalThis.fetch.bind(globalThis);
   }
+  getApiKey() {
+    return this.apiKey;
+  }
   async validateCredentials(credentials) {
     const key = credentials.apiKey;
     const base = credentials.baseUrl || this.baseUrl;
@@ -629,6 +632,36 @@ var GeminiProvider = class {
     }
   }
 };
+
+// src/ai/digest.ts
+async function generateTopicDigest(topics, apiKey) {
+  if (!apiKey || !topics.trim()) return "";
+  const prompt = `You are an executive intelligence assistant. Generate a crisp, structured morning briefing digest for these topics: "${topics}".
+Format rules:
+- Differentiate each topic under its own heading with an emoji (e.g. \u{1F916} AI, \u{1F9E0} ML, \u{1F9BE} Robotics, \u{1F4BC} Startups).
+- For each topic, give 1-2 bullet points with key recent developments or trends.
+- Keep each bullet point concise (1-2 sentences), factual, and directly informative.
+- Do NOT use markdown code blocks. Use clean Telegram-friendly markdown (*bold*, _italic_, bullet points).`;
+  for (const model of ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash"]) {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 800 }
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (text) return text;
+      }
+    } catch {
+    }
+  }
+  return "";
+}
 
 // src/bot/allowlist.ts
 var UserAllowlist = class {
@@ -1500,17 +1533,20 @@ _Note: Usage limits and token consumption are tracked directly by your configure
           text2 += `
 \u{1F4F0} *Tracked Topics:* \`${topicMemory.content}\`
 `;
-          const provider = this.router || this.aiProvider;
-          if (provider) {
+          let apiKey = "";
+          if (this.aiProvider instanceof GeminiProvider) {
+            apiKey = this.aiProvider.getApiKey();
+          } else if (typeof globalThis !== "undefined" && globalThis.Deno?.env) {
+            apiKey = globalThis.Deno.env.get("GEMINI_API_KEY") || "";
+          } else if (typeof process !== "undefined" && process.env) {
+            apiKey = process.env.GEMINI_API_KEY || "";
+          }
+          if (apiKey) {
             try {
-              const res = await provider.interpretMessage({
-                userMessage: `Please generate a concise, high-value briefing digest with key recent trends and developments for each of these topics: "${topicMemory.content}". Format with distinct headings and emoji bullet points.`,
-                userTimezone: user.timezone,
-                referenceTime: /* @__PURE__ */ new Date()
-              });
-              if (res.intent === "chat" && res.reply) {
+              const digest = await generateTopicDigest(topicMemory.content, apiKey);
+              if (digest) {
                 text2 += `
-${res.reply}
+${digest}
 `;
               }
             } catch {

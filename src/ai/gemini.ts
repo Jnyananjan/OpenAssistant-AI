@@ -35,6 +35,10 @@ export class GeminiProvider implements AIProvider, AIProviderAdapter {
     this.fetch = config?.fetchFn || globalThis.fetch.bind(globalThis);
   }
 
+  getApiKey(): string {
+    return this.apiKey;
+  }
+
   async validateCredentials(credentials: ProviderCredentials): Promise<{ valid: boolean; error?: string }> {
     const key = credentials.apiKey;
     const base = credentials.baseUrl || this.baseUrl;

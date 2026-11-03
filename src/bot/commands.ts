@@ -17,6 +17,8 @@ import {
 import { formatLocalDateTime } from '../shared/time.js';
 import { randomBytes } from 'node:crypto';
 import { ProviderId, AIProvider } from '../ai/provider.js';
+import { GeminiProvider } from '../ai/gemini.js';
+import { generateTopicDigest } from '../ai/digest.js';
 
 import { EncryptionService } from '../security/encryption.js';
 import { SmartModelRouter } from '../ai/router.js';
@@ -374,16 +376,20 @@ _Note: Usage limits and token consumption are tracked directly by your configure
         text += `\n📋 *Total Active Tasks:* ${openTasks.length}\n`;
         if (topicMemory && topicMemory.content) {
           text += `\n📰 *Tracked Topics:* \`${topicMemory.content}\`\n`;
-          const provider = this.router || this.aiProvider;
-          if (provider) {
+          let apiKey = '';
+          if (this.aiProvider instanceof GeminiProvider) {
+            apiKey = this.aiProvider.getApiKey();
+          } else if (typeof globalThis !== 'undefined' && (globalThis as any).Deno?.env) {
+            apiKey = (globalThis as any).Deno.env.get('GEMINI_API_KEY') || '';
+          } else if (typeof process !== 'undefined' && process.env) {
+            apiKey = process.env.GEMINI_API_KEY || '';
+          }
+
+          if (apiKey) {
             try {
-              const res = await provider.interpretMessage({
-                userMessage: `Please generate a concise, high-value briefing digest with key recent trends and developments for each of these topics: "${topicMemory.content}". Format with distinct headings and emoji bullet points.`,
-                userTimezone: user.timezone,
-                referenceTime: new Date(),
-              });
-              if (res.intent === 'chat' && res.reply) {
-                text += `\n${res.reply}\n`;
+              const digest = await generateTopicDigest(topicMemory.content, apiKey);
+              if (digest) {
+                text += `\n${digest}\n`;
               }
             } catch {}
           }

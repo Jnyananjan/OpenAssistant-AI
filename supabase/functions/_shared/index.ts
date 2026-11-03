@@ -5,6 +5,7 @@ export * from '../../../src/shared/time.js';
 export * from '../../../src/ai/intent-schema.js';
 export * from '../../../src/ai/provider.js';
 export * from '../../../src/ai/gemini.js';
+export * from '../../../src/ai/digest.js';
 export * from '../../../src/bot/allowlist.js';
 export * from '../../../src/bot/messages.js';
 export * from '../../../src/bot/telegram-client.js';

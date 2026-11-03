@@ -160,6 +160,36 @@ var AssistantIntentSchema = z.discriminatedUnion("intent", [
   QueryExpensesIntentSchema
 ]);
 
+// src/ai/digest.ts
+async function generateTopicDigest(topics, apiKey) {
+  if (!apiKey || !topics.trim()) return "";
+  const prompt = `You are an executive intelligence assistant. Generate a crisp, structured morning briefing digest for these topics: "${topics}".
+Format rules:
+- Differentiate each topic under its own heading with an emoji (e.g. \u{1F916} AI, \u{1F9E0} ML, \u{1F9BE} Robotics, \u{1F4BC} Startups).
+- For each topic, give 1-2 bullet points with key recent developments or trends.
+- Keep each bullet point concise (1-2 sentences), factual, and directly informative.
+- Do NOT use markdown code blocks. Use clean Telegram-friendly markdown (*bold*, _italic_, bullet points).`;
+  for (const model of ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash"]) {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 800 }
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (text) return text;
+      }
+    } catch {
+    }
+  }
+  return "";
+}
+
 // src/bot/messages.ts
 function createReminderNotificationMessage(chatId, reminderId, taskTitle, dueAt, timeZone, followUpCount) {
   const isFollowUp = followUpCount > 0;
@@ -1287,47 +1317,11 @@ async function handleProcessReminders(req) {
     botToken
   });
   const policy = new DefaultReminderPolicy(maxFollowUps);
-  const digestGenerator = async (topics) => {
-    if (!geminiApiKey) return "";
-    try {
-      const prompt = `You are an executive intelligence assistant. Generate a crisp, structured morning briefing digest for these topics: "${topics}".
-Format rules:
-- Differentiate each topic under its own heading with an emoji (e.g. \u{1F916} AI, \u{1F9E0} ML, \u{1F9BE} Robotics, \u{1F4BC} Startups).
-- For each topic, give 1-2 bullet points with key recent developments or trends.
-- Keep each bullet point concise (1-2 sentences), factual, and directly informative.
-- Do NOT use markdown code blocks. Use clean Telegram-friendly markdown (*bold*, _italic_, bullet points).`;
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 800 }
-        })
-      });
-      if (!res.ok) {
-        const res2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.3, maxOutputTokens: 800 }
-          })
-        });
-        if (!res2.ok) return "";
-        const data2 = await res2.json();
-        return data2.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
-      }
-      const data = await res.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
-    } catch {
-      return "";
-    }
-  };
   const worker = new ReminderWorker({
     db,
     notification,
     policy,
-    digestGenerator
+    digestGenerator: (topics) => generateTopicDigest(topics, geminiApiKey)
   });
   try {
     const runResult = await worker.runBatch();
