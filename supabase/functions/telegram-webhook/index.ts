@@ -1,3 +1,33 @@
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res, err) => function __init() {
+  if (err) throw err[0];
+  try {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  } catch (e) {
+    throw err = [e], e;
+  }
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+
+// src/custom/index.ts
+var custom_exports = {};
+__export(custom_exports, {
+  handleCustomCommand: () => handleCustomCommand
+});
+async function handleCustomCommand(message, user) {
+  const text = message.text?.trim() || "";
+  return false;
+}
+var init_custom = __esm({
+  "src/custom/index.ts"() {
+    "use strict";
+  }
+});
+
 // src/shared/clock.ts
 var SystemClock = class {
   now() {
@@ -1163,6 +1193,14 @@ var CommandHandler = class {
     const parts = text.split(/\s+/);
     const command = parts[0].toLowerCase();
     const args = parts.slice(1).join(" ").trim();
+    try {
+      const custom = await Promise.resolve().then(() => (init_custom(), custom_exports)).catch(() => null);
+      if (custom && typeof custom.handleCustomCommand === "function") {
+        const handled = await custom.handleCustomCommand(message, user);
+        if (handled) return;
+      }
+    } catch {
+    }
     switch (command) {
       case "/start":
         await this.notification.sendText(
@@ -1459,8 +1497,22 @@ _Note: Usage limits and token consumption are tracked directly by your configure
         if (topicMemory && topicMemory.content) {
           text2 += `
 \u{1F4F0} *Tracked Topics:* \`${topicMemory.content}\`
-_Ask "tell me trending updates on ${topicMemory.content}" anytime for a live digest._
 `;
+          if (this.router) {
+            try {
+              const res = await this.router.interpretMessage({
+                userMessage: `Please generate a concise, high-value briefing digest with key recent trends and developments for each of these topics: "${topicMemory.content}". Format with distinct headings and emoji bullet points.`,
+                userTimezone: user.timezone,
+                referenceTime: /* @__PURE__ */ new Date()
+              });
+              if (res.intent === "chat" && res.reply) {
+                text2 += `
+${res.reply}
+`;
+              }
+            } catch {
+            }
+          }
         } else {
           text2 += `
 \u{1F4A1} Tip: Set morning digest topics with \`/topics AI, ML, Robotics\`.

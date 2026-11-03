@@ -48,6 +48,18 @@ export class CommandHandler {
     const command = parts[0].toLowerCase();
     const args = parts.slice(1).join(' ').trim();
 
+    // Check optional private custom plugins (gitignored in src/custom/)
+    try {
+      // @ts-ignore
+      const custom = await import('../custom/index.js').catch(() => null);
+      if (custom && typeof custom.handleCustomCommand === 'function') {
+        const handled = await custom.handleCustomCommand(message, user);
+        if (handled) return;
+      }
+    } catch {
+      // Ignore if not present
+    }
+
     switch (command) {
       case '/start':
         await this.notification.sendText(
@@ -358,7 +370,19 @@ _Note: Usage limits and token consumption are tracked directly by your configure
         }
         text += `\n📋 *Total Active Tasks:* ${openTasks.length}\n`;
         if (topicMemory && topicMemory.content) {
-          text += `\n📰 *Tracked Topics:* \`${topicMemory.content}\`\n_Ask "tell me trending updates on ${topicMemory.content}" anytime for a live digest._\n`;
+          text += `\n📰 *Tracked Topics:* \`${topicMemory.content}\`\n`;
+          if (this.router) {
+            try {
+              const res = await this.router.interpretMessage({
+                userMessage: `Please generate a concise, high-value briefing digest with key recent trends and developments for each of these topics: "${topicMemory.content}". Format with distinct headings and emoji bullet points.`,
+                userTimezone: user.timezone,
+                referenceTime: new Date(),
+              });
+              if (res.intent === 'chat' && res.reply) {
+                text += `\n${res.reply}\n`;
+              }
+            } catch {}
+          }
         } else {
           text += `\n💡 Tip: Set morning digest topics with \`/topics AI, ML, Robotics\`.\n`;
         }

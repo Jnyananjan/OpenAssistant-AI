@@ -21,6 +21,7 @@ export interface ReminderWorkerConfig {
   clock?: Clock;
   batchSize?: number;
   leaseSeconds?: number;
+  digestGenerator?: (topics: string) => Promise<string>;
 }
 
 export interface WorkerRunResult {
@@ -42,6 +43,7 @@ export class ReminderWorker {
   private readonly clock: Clock;
   private readonly batchSize: number;
   private readonly leaseSeconds: number;
+  private readonly digestGenerator?: (topics: string) => Promise<string>;
 
   constructor(config: ReminderWorkerConfig) {
     this.db = config.db;
@@ -50,6 +52,7 @@ export class ReminderWorker {
     this.clock = config.clock || new SystemClock();
     this.batchSize = config.batchSize || 20;
     this.leaseSeconds = config.leaseSeconds || 60;
+    this.digestGenerator = config.digestGenerator;
   }
 
   async runBatch(): Promise<WorkerRunResult> {
@@ -241,7 +244,20 @@ export class ReminderWorker {
     const memories = await this.db.getMemoriesForUser(user.id);
     const topicMemory = memories.find(m => m.key === 'briefing_topics' || m.key === 'topics');
     if (topicMemory && topicMemory.content) {
-      msg += `\n📰 *Tracked Topics:* \`${topicMemory.content}\`\n_Ask "tell me trending updates on ${topicMemory.content}" anytime for a live digest._\n`;
+      if (this.digestGenerator) {
+        try {
+          const digest = await this.digestGenerator(topicMemory.content);
+          if (digest) {
+            msg += `\n📰 *Daily Trending Topics Digest:*\n${digest}\n`;
+          } else {
+            msg += `\n📰 *Tracked Topics:* \`${topicMemory.content}\`\n`;
+          }
+        } catch {
+          msg += `\n📰 *Tracked Topics:* \`${topicMemory.content}\`\n`;
+        }
+      } else {
+        msg += `\n📰 *Tracked Topics:* \`${topicMemory.content}\`\n`;
+      }
     }
 
     await this.notification.sendText({
