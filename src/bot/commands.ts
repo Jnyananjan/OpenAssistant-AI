@@ -16,7 +16,7 @@ import {
 } from './messages.js';
 import { formatLocalDateTime } from '../shared/time.js';
 import { randomBytes } from 'node:crypto';
-import { ProviderId } from '../ai/provider.js';
+import { ProviderId, AIProvider } from '../ai/provider.js';
 
 import { EncryptionService } from '../security/encryption.js';
 import { SmartModelRouter } from '../ai/router.js';
@@ -26,6 +26,7 @@ export interface CommandHandlerConfig {
   notification: NotificationProvider;
   encryption?: EncryptionService;
   router?: SmartModelRouter;
+  aiProvider?: AIProvider;
 }
 
 export class CommandHandler {
@@ -33,12 +34,14 @@ export class CommandHandler {
   private readonly notification: NotificationProvider;
   private readonly encryption: EncryptionService;
   private readonly router?: SmartModelRouter;
+  private readonly aiProvider?: AIProvider;
 
   constructor(config: CommandHandlerConfig) {
     this.db = config.db;
     this.notification = config.notification;
     this.encryption = config.encryption || new EncryptionService();
     this.router = config.router;
+    this.aiProvider = config.aiProvider;
   }
 
   async handleCommand(message: TelegramMessage, user: AppUser): Promise<void> {
@@ -371,9 +374,10 @@ _Note: Usage limits and token consumption are tracked directly by your configure
         text += `\n📋 *Total Active Tasks:* ${openTasks.length}\n`;
         if (topicMemory && topicMemory.content) {
           text += `\n📰 *Tracked Topics:* \`${topicMemory.content}\`\n`;
-          if (this.router) {
+          const provider = this.router || this.aiProvider;
+          if (provider) {
             try {
-              const res = await this.router.interpretMessage({
+              const res = await provider.interpretMessage({
                 userMessage: `Please generate a concise, high-value briefing digest with key recent trends and developments for each of these topics: "${topicMemory.content}". Format with distinct headings and emoji bullet points.`,
                 userTimezone: user.timezone,
                 referenceTime: new Date(),

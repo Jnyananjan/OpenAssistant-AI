@@ -84,6 +84,7 @@ export class WebhookController {
       notification: this.notification,
       encryption: this.encryption,
       router: this.aiProvider instanceof SmartModelRouter ? this.aiProvider : undefined,
+      aiProvider: this.aiProvider,
     });
     this.callbackHandler = new CallbackHandler({
       db: this.db,

@@ -1181,11 +1181,13 @@ var CommandHandler = class {
   notification;
   encryption;
   router;
+  aiProvider;
   constructor(config) {
     this.db = config.db;
     this.notification = config.notification;
     this.encryption = config.encryption || new EncryptionService();
     this.router = config.router;
+    this.aiProvider = config.aiProvider;
   }
   async handleCommand(message, user) {
     const text = message.text?.trim() || "";
@@ -1498,9 +1500,10 @@ _Note: Usage limits and token consumption are tracked directly by your configure
           text2 += `
 \u{1F4F0} *Tracked Topics:* \`${topicMemory.content}\`
 `;
-          if (this.router) {
+          const provider = this.router || this.aiProvider;
+          if (provider) {
             try {
-              const res = await this.router.interpretMessage({
+              const res = await provider.interpretMessage({
                 userMessage: `Please generate a concise, high-value briefing digest with key recent trends and developments for each of these topics: "${topicMemory.content}". Format with distinct headings and emoji bullet points.`,
                 userTimezone: user.timezone,
                 referenceTime: /* @__PURE__ */ new Date()
@@ -2745,7 +2748,8 @@ var WebhookController = class {
       db: this.db,
       notification: this.notification,
       encryption: this.encryption,
-      router: this.aiProvider instanceof SmartModelRouter ? this.aiProvider : void 0
+      router: this.aiProvider instanceof SmartModelRouter ? this.aiProvider : void 0,
+      aiProvider: this.aiProvider
     });
     this.callbackHandler = new CallbackHandler({
       db: this.db,
