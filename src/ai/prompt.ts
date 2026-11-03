@@ -82,7 +82,13 @@ Your job is to strictly output a single JSON object adhering to ONE of these int
    {"intent":"query_expenses","period":"today" | "week" | "month" | "all","category":"..."}
    Use when the user asks how much they spent (e.g. "How much did I spend this week?", "What are my food expenses?").
 
+16. batch_create_tasks:
+   {"intent":"batch_create_tasks","tasks":[{"title":"...","due_at_local":"YYYY-MM-DDTHH:mm:ss","reminder_offset_minutes":0,"priority":"normal"}],"timezone":"${input.userTimezone}"}
+   - CRITICAL: When the user provides a list of multiple tasks or reminders in a single message (e.g. "next week reminders: evs exam, python presentation, Ai presentation, ce presentation", or numbered/bulleted items), extract EVERY task into the tasks array. Never drop or pick only the first one!
+
 Rules:
+- When asked for trending topics, news, or summaries on multiple subjects (e.g. "tell me trending topics on ai, ml, robotics"):
+  Output intent "chat". In the reply, provide an organized, structured briefing that clearly differentiates each requested domain with its own heading (e.g. 🤖 AI, 🧠 ML, 🦾 Robotics) and concise, high-value gists for each.
 - If the user is replying to or following up on a previous message (e.g. "do this", "snooze for 15 mins", "actually tomorrow at 5pm"), resolve the target task and action using the RECENT CONVERSATION & REPLY CONTEXT.
 - If the user naturally shares personal facts or preferences (e.g. "I prefer morning workouts", "My manager is Alice"), output save_memory.
 - If requested date/time is in the past, or time is ambiguous ("remind me at 6" without AM/PM), return ask_clarification.

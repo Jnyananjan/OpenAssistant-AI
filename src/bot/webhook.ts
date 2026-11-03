@@ -232,7 +232,7 @@ export class WebhookController {
     const referenceTime = this.clock.now();
 
     // 1. Fetch recent conversation history before recording the new message
-    const recentHistory = await this.db.getRecentChatHistory(user.id, 6);
+    const recentHistory = await this.db.getRecentChatHistory(user.id, 20);
 
     // 2. Record incoming user message in chat history
     await this.db.recordEvent(user.id, 'chat_message', { role: 'user', text });
@@ -248,7 +248,7 @@ export class WebhookController {
     }
 
     // Retrieve memory context & open tasks
-    const memories = await this.memoryEngine.getRelevantContext(user.id, text, 300);
+    const memories = await this.memoryEngine.getRelevantContext(user.id, text, 2000);
     const existingTasks = await this.db.listTasks(user.id, 'all', user.timezone);
 
     let intent: AssistantIntent;
@@ -335,6 +335,61 @@ export class WebhookController {
             text: `I had trouble interpreting the date/time for "${intent.title}". Could you specify the exact deadline (e.g. "Tomorrow at 6 PM")?`,
           });
         }
+        break;
+      }
+
+      case 'batch_create_tasks': {
+        const savedTasks: Array<{ title: string; dueFormatted?: string }> = [];
+
+        for (const item of intent.tasks) {
+          try {
+            if (item.due_at_local) {
+              const dueUtc = parseLocalToUtc(item.due_at_local, intent.timezone || user.timezone);
+              const offsetMinutes = item.reminder_offset_minutes || 0;
+              const reminderUtc = new Date(dueUtc.getTime() - offsetMinutes * 60 * 1000);
+
+              const { task } = await this.db.createTaskWithReminder(
+                user.id,
+                item.title,
+                dueUtc.toISOString(),
+                reminderUtc.toISOString(),
+                item.priority || 'normal'
+              );
+              savedTasks.push({
+                title: task.title,
+                dueFormatted: formatLocalDateTime(dueUtc, user.timezone),
+              });
+            } else {
+              const task = await this.db.createTask(
+                user.id,
+                item.title,
+                null,
+                item.priority || 'normal'
+              );
+              savedTasks.push({ title: task.title });
+            }
+          } catch {
+            const task = await this.db.createTask(
+              user.id,
+              item.title,
+              null,
+              item.priority || 'normal'
+            );
+            savedTasks.push({ title: task.title });
+          }
+        }
+
+        let reply = `✅ *${savedTasks.length} Tasks & Reminders Saved:*\n\n`;
+        savedTasks.forEach((t, i) => {
+          reply += `${i + 1}. *${t.title}*${t.dueFormatted ? `\n   ⏰ Deadline: ${t.dueFormatted}` : ''}\n`;
+        });
+        reply += `\nI will monitor and follow up on each of these deadlines.`;
+
+        await this.reply(chatId, user.id, {
+          chat_id: chatId,
+          text: reply.trim(),
+          parse_mode: 'Markdown',
+        });
         break;
       }
 

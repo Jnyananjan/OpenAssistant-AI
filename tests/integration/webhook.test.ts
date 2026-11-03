@@ -406,4 +406,72 @@ describe('WebhookController Integration', () => {
     expect(receivedUserMessage).toContain('[Forwarded message]:');
     expect(receivedUserMessage).toContain('Flight to NYC departs at 7 AM tomorrow');
   });
+
+  it('handles batch_create_tasks intent to schedule multiple tasks at once', async () => {
+    mockAiProvider.interpretMessage = vi.fn().mockResolvedValue({
+      intent: 'batch_create_tasks',
+      tasks: [
+        { title: 'EVS exam', due_at_local: '2026-11-09T09:00:00', reminder_offset_minutes: 0 },
+        { title: 'python presentation', due_at_local: '2026-11-09T10:00:00', reminder_offset_minutes: 0 },
+        { title: 'Ai presentation', due_at_local: '2026-11-09T11:00:00', reminder_offset_minutes: 0 },
+        { title: 'ce presentation', due_at_local: '2026-11-09T12:00:00', reminder_offset_minutes: 0 },
+      ],
+      timezone: 'Asia/Kolkata',
+    });
+
+    await controller.handleRequest(WEBHOOK_SECRET, {
+      update_id: 970,
+      message: {
+        message_id: 40,
+        from: { id: 123456, is_bot: false, first_name: 'Alice' },
+        chat: { id: 123456, type: 'private' },
+        date: 12370,
+        text: 'next week reminders:\nevs exam\npython presentation\nAi presentation\nce presentation',
+      },
+    });
+
+    const replyMsg = sentMessages[sentMessages.length - 1];
+    expect(replyMsg.text).toContain('4 Tasks & Reminders Saved');
+    expect(replyMsg.text).toContain('EVS exam');
+    expect(replyMsg.text).toContain('python presentation');
+    expect(replyMsg.text).toContain('Ai presentation');
+    expect(replyMsg.text).toContain('ce presentation');
+
+    const user = await db.getUserByTelegramId(123456);
+    const tasks = await db.listTasks(user!.id, 'all');
+    expect(tasks.length).toBe(4);
+  });
+
+  it('handles /topics command to view and set briefing topics', async () => {
+    // 1. View default topics
+    await controller.handleRequest(WEBHOOK_SECRET, {
+      update_id: 980,
+      message: {
+        message_id: 50,
+        from: { id: 123456, is_bot: false, first_name: 'Alice' },
+        chat: { id: 123456, type: 'private' },
+        date: 12380,
+        text: '/topics',
+      },
+    });
+
+    let lastMsg = sentMessages[sentMessages.length - 1];
+    expect(lastMsg.text).toContain('Your Morning Briefing Topics');
+
+    // 2. Set new topics
+    await controller.handleRequest(WEBHOOK_SECRET, {
+      update_id: 981,
+      message: {
+        message_id: 51,
+        from: { id: 123456, is_bot: false, first_name: 'Alice' },
+        chat: { id: 123456, type: 'private' },
+        date: 12381,
+        text: '/topics AI, ML, Robotics',
+      },
+    });
+
+    lastMsg = sentMessages[sentMessages.length - 1];
+    expect(lastMsg.text).toContain('Briefing Topics Updated');
+    expect(lastMsg.text).toContain('AI, ML, Robotics');
+  });
 });

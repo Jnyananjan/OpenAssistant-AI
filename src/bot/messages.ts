@@ -23,6 +23,7 @@ I am your personal productivity assistant on Telegram. I help you capture tasks 
 • /done — Complete a task
 • /snooze — Snooze active reminder
 • /briefing — Morning executive briefing on demand
+• /topics — Set or view morning trending digest topics
 • /expenses — View spending breakdown & summary
 • /memory — Facts & preferences remembered
 • /ai — Multi-provider AI model settings
@@ -50,6 +51,7 @@ export function createHelpMessage(chatId: number): SendTextInput {
 • /done — Mark a task complete
 • /snooze — Snooze the latest active reminder
 • /briefing — Morning executive briefing on demand
+• /topics — Set or view morning trending digest topics
 • /expenses — View spending breakdown & summary
 • /memory — Facts & preferences remembered
 • /ai — Multi-provider AI model settings

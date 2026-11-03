@@ -93,7 +93,19 @@ var AskClarificationIntentSchema = z.object({
 });
 var ChatIntentSchema = z.object({
   intent: z.literal("chat"),
-  reply: z.string().min(1).max(1e3)
+  reply: z.string().min(1).max(4096)
+});
+var BatchCreateTasksIntentSchema = z.object({
+  intent: z.literal("batch_create_tasks"),
+  tasks: z.array(
+    z.object({
+      title: z.string().min(1).max(250),
+      due_at_local: z.string().nullable().optional(),
+      reminder_offset_minutes: z.number().int().min(0).max(10080).default(0),
+      priority: PrioritySchema.default("normal")
+    })
+  ).min(1).max(25),
+  timezone: z.string().default("Asia/Kolkata")
 });
 var SaveMemoryIntentSchema = z.object({
   intent: z.literal("save_memory"),
@@ -132,6 +144,7 @@ var SwitchProviderModelIntentSchema = z.object({
 var AssistantIntentSchema = z.discriminatedUnion("intent", [
   CreateTaskIntentSchema,
   CreateTaskWithReminderIntentSchema,
+  BatchCreateTasksIntentSchema,
   ListTasksIntentSchema,
   CompleteTaskIntentSchema,
   SnoozeReminderIntentSchema,
@@ -1150,6 +1163,14 @@ var ReminderWorker = class {
         msg += `\u2022 ${timeStr}: ${t.title}
 `;
       });
+    }
+    const memories = await this.db.getMemoriesForUser(user.id);
+    const topicMemory = memories.find((m) => m.key === "briefing_topics" || m.key === "topics");
+    if (topicMemory && topicMemory.content) {
+      msg += `
+\u{1F4F0} *Tracked Topics:* \`${topicMemory.content}\`
+_Ask "tell me trending updates on ${topicMemory.content}" anytime for a live digest._
+`;
     }
     await this.notification.sendText({
       chat_id: user.telegram_chat_id,

@@ -344,6 +344,9 @@ _Note: Usage limits and token consumption are tracked directly by your configure
         const todayTasks = await this.db.listTasks(user.id, 'today', user.timezone);
         const openTasks = await this.db.listTasks(user.id, 'all', user.timezone);
         const nowStr = formatLocalDateTime(new Date().toISOString(), user.timezone);
+        const memories = await this.db.getMemoriesForUser(user.id);
+        const topicMemory = memories.find(m => m.key === 'briefing_topics' || m.key === 'topics');
+
         let text = `☀️ *Executive Briefing — ${nowStr}*\n\n`;
         if (todayTasks.length === 0) {
           text += `🎯 *Today's Focus:* Clear schedule! No tasks due today.\n`;
@@ -354,10 +357,54 @@ _Note: Usage limits and token consumption are tracked directly by your configure
           });
         }
         text += `\n📋 *Total Active Tasks:* ${openTasks.length}\n`;
+        if (topicMemory && topicMemory.content) {
+          text += `\n📰 *Tracked Topics:* \`${topicMemory.content}\`\n_Ask "tell me trending updates on ${topicMemory.content}" anytime for a live digest._\n`;
+        } else {
+          text += `\n💡 Tip: Set morning digest topics with \`/topics AI, ML, Robotics\`.\n`;
+        }
         text += `\nHave a productive day! Reply with any task or expense anytime.`;
         await this.notification.sendText({
           chat_id: chatId,
           text,
+          parse_mode: 'Markdown',
+        });
+        break;
+      }
+
+      case '/topics': {
+        const rawArgs = text.replace(/^\/topics(@\w+)?/i, '').trim();
+        const memories = await this.db.getMemoriesForUser(user.id);
+        const topicMemory = memories.find(
+          m => m.key === 'briefing_topics' || m.key === 'topics'
+        );
+
+        if (!rawArgs) {
+          const currentTopics = topicMemory?.content || 'Not set yet (e.g. AI, ML, Robotics, Startups)';
+          await this.notification.sendText({
+            chat_id: chatId,
+            text: `📰 *Your Morning Briefing Topics:*\n\n*Current Topics:* \`${currentTopics}\`\n\nTo update your daily digest topics, type:\n\`/topics AI, ML, Robotics, Tech Startups\`\n\nYour morning 8:00 AM briefing will include these topics, and you can ask for a live gist anytime!`,
+            parse_mode: 'Markdown',
+          });
+          break;
+        }
+
+        if (topicMemory) {
+          await this.db.updateMemory(topicMemory.id, { content: rawArgs });
+        } else {
+          await this.db.saveMemory({
+            userId: user.id,
+            category: 'preference',
+            key: 'briefing_topics',
+            content: rawArgs,
+            confidence: 1.0,
+            source: 'user',
+            isActive: true,
+          });
+        }
+
+        await this.notification.sendText({
+          chat_id: chatId,
+          text: `✅ *Briefing Topics Updated!*\n\n*Tracked Topics:* \`${rawArgs}\`\n\nI will focus on these for your daily morning digests and whenever you ask for trending updates!`,
           parse_mode: 'Markdown',
         });
         break;

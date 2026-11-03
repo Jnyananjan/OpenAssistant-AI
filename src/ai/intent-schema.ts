@@ -65,7 +65,20 @@ export const AskClarificationIntentSchema = z.object({
 
 export const ChatIntentSchema = z.object({
   intent: z.literal('chat'),
-  reply: z.string().min(1).max(1000),
+  reply: z.string().min(1).max(4096),
+});
+
+export const BatchCreateTasksIntentSchema = z.object({
+  intent: z.literal('batch_create_tasks'),
+  tasks: z.array(
+    z.object({
+      title: z.string().min(1).max(250),
+      due_at_local: z.string().nullable().optional(),
+      reminder_offset_minutes: z.number().int().min(0).max(10080).default(0),
+      priority: PrioritySchema.default('normal'),
+    })
+  ).min(1).max(25),
+  timezone: z.string().default('Asia/Kolkata'),
 });
 
 export const SaveMemoryIntentSchema = z.object({
@@ -111,6 +124,7 @@ export const SwitchProviderModelIntentSchema = z.object({
 export const AssistantIntentSchema = z.discriminatedUnion('intent', [
   CreateTaskIntentSchema,
   CreateTaskWithReminderIntentSchema,
+  BatchCreateTasksIntentSchema,
   ListTasksIntentSchema,
   CompleteTaskIntentSchema,
   SnoozeReminderIntentSchema,
@@ -128,6 +142,7 @@ export const AssistantIntentSchema = z.discriminatedUnion('intent', [
 
 export type AssistantIntent = z.infer<typeof AssistantIntentSchema>;
 export type CreateTaskWithReminderIntent = z.infer<typeof CreateTaskWithReminderIntentSchema>;
+export type BatchCreateTasksIntent = z.infer<typeof BatchCreateTasksIntentSchema>;
 export type SaveMemoryIntent = z.infer<typeof SaveMemoryIntentSchema>;
 export type SearchMemoryIntent = z.infer<typeof SearchMemoryIntentSchema>;
 export type DeleteMemoryIntent = z.infer<typeof DeleteMemoryIntentSchema>;

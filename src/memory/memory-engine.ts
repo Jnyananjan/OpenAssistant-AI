@@ -120,18 +120,26 @@ export class MemoryEngine {
     return { deletedCount };
   }
 
-  async getRelevantContext(userId: string, userMessage: string, maxTokens = 500): Promise<Array<{ category: string; content: string; key?: string }>> {
+  async getRelevantContext(userId: string, userMessage: string, maxTokens = 2000): Promise<Array<{ category: string; content: string; key?: string }>> {
     // Extract keywords from user message
     const words = userMessage.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 3);
-    const query = words.slice(0, 5).join(' ');
+    const query = words.slice(0, 8).join(' ');
 
-    const memories = await this.recall(userId, query || userMessage, undefined, 5);
+    const memories = await this.recall(userId, query || userMessage, undefined, 15);
+    // Also include core user preferences unconditionally
+    const preferences = await this.recall(userId, '', 'preference', 10);
+    const combined = [...memories];
+    for (const p of preferences) {
+      if (!combined.some(m => m.id === p.id)) {
+        combined.push(p);
+      }
+    }
 
     // Limit context length
     let currentLength = 0;
     const bounded: Array<{ category: string; content: string; key?: string }> = [];
 
-    for (const mem of memories) {
+    for (const mem of combined) {
       const entryLength = mem.content.length;
       if (currentLength + entryLength > maxTokens * 4) break; // Approximate 4 chars per token
       bounded.push({

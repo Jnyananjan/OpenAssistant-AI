@@ -137,7 +137,19 @@ var AskClarificationIntentSchema = z.object({
 });
 var ChatIntentSchema = z.object({
   intent: z.literal("chat"),
-  reply: z.string().min(1).max(1e3)
+  reply: z.string().min(1).max(4096)
+});
+var BatchCreateTasksIntentSchema = z.object({
+  intent: z.literal("batch_create_tasks"),
+  tasks: z.array(
+    z.object({
+      title: z.string().min(1).max(250),
+      due_at_local: z.string().nullable().optional(),
+      reminder_offset_minutes: z.number().int().min(0).max(10080).default(0),
+      priority: PrioritySchema.default("normal")
+    })
+  ).min(1).max(25),
+  timezone: z.string().default("Asia/Kolkata")
 });
 var SaveMemoryIntentSchema = z.object({
   intent: z.literal("save_memory"),
@@ -176,6 +188,7 @@ var SwitchProviderModelIntentSchema = z.object({
 var AssistantIntentSchema = z.discriminatedUnion("intent", [
   CreateTaskIntentSchema,
   CreateTaskWithReminderIntentSchema,
+  BatchCreateTasksIntentSchema,
   ListTasksIntentSchema,
   CompleteTaskIntentSchema,
   SnoozeReminderIntentSchema,
@@ -273,7 +286,13 @@ Your job is to strictly output a single JSON object adhering to ONE of these int
    {"intent":"query_expenses","period":"today" | "week" | "month" | "all","category":"..."}
    Use when the user asks how much they spent (e.g. "How much did I spend this week?", "What are my food expenses?").
 
+16. batch_create_tasks:
+   {"intent":"batch_create_tasks","tasks":[{"title":"...","due_at_local":"YYYY-MM-DDTHH:mm:ss","reminder_offset_minutes":0,"priority":"normal"}],"timezone":"${input.userTimezone}"}
+   - CRITICAL: When the user provides a list of multiple tasks or reminders in a single message (e.g. "next week reminders: evs exam, python presentation, Ai presentation, ce presentation", or numbered/bulleted items), extract EVERY task into the tasks array. Never drop or pick only the first one!
+
 Rules:
+- When asked for trending topics, news, or summaries on multiple subjects (e.g. "tell me trending topics on ai, ml, robotics"):
+  Output intent "chat". In the reply, provide an organized, structured briefing that clearly differentiates each requested domain with its own heading (e.g. \u{1F916} AI, \u{1F9E0} ML, \u{1F9BE} Robotics) and concise, high-value gists for each.
 - If the user is replying to or following up on a previous message (e.g. "do this", "snooze for 15 mins", "actually tomorrow at 5pm"), resolve the target task and action using the RECENT CONVERSATION & REPLY CONTEXT.
 - If the user naturally shares personal facts or preferences (e.g. "I prefer morning workouts", "My manager is Alice"), output save_memory.
 - If requested date/time is in the past, or time is ambiguous ("remind me at 6" without AM/PM), return ask_clarification.
@@ -620,6 +639,7 @@ I am your personal productivity assistant on Telegram. I help you capture tasks 
 \u2022 /done \u2014 Complete a task
 \u2022 /snooze \u2014 Snooze active reminder
 \u2022 /briefing \u2014 Morning executive briefing on demand
+\u2022 /topics \u2014 Set or view morning trending digest topics
 \u2022 /expenses \u2014 View spending breakdown & summary
 \u2022 /memory \u2014 Facts & preferences remembered
 \u2022 /ai \u2014 Multi-provider AI model settings
@@ -645,6 +665,7 @@ function createHelpMessage(chatId) {
 \u2022 /done \u2014 Mark a task complete
 \u2022 /snooze \u2014 Snooze the latest active reminder
 \u2022 /briefing \u2014 Morning executive briefing on demand
+\u2022 /topics \u2014 Set or view morning trending digest topics
 \u2022 /expenses \u2014 View spending breakdown & summary
 \u2022 /memory \u2014 Facts & preferences remembered
 \u2022 /ai \u2014 Multi-provider AI model settings
@@ -1416,6 +1437,8 @@ _Note: Usage limits and token consumption are tracked directly by your configure
         const todayTasks = await this.db.listTasks(user.id, "today", user.timezone);
         const openTasks = await this.db.listTasks(user.id, "all", user.timezone);
         const nowStr = formatLocalDateTime((/* @__PURE__ */ new Date()).toISOString(), user.timezone);
+        const memories = await this.db.getMemoriesForUser(user.id);
+        const topicMemory = memories.find((m) => m.key === "briefing_topics" || m.key === "topics");
         let text2 = `\u2600\uFE0F *Executive Briefing \u2014 ${nowStr}*
 
 `;
@@ -1433,11 +1456,67 @@ _Note: Usage limits and token consumption are tracked directly by your configure
         text2 += `
 \u{1F4CB} *Total Active Tasks:* ${openTasks.length}
 `;
+        if (topicMemory && topicMemory.content) {
+          text2 += `
+\u{1F4F0} *Tracked Topics:* \`${topicMemory.content}\`
+_Ask "tell me trending updates on ${topicMemory.content}" anytime for a live digest._
+`;
+        } else {
+          text2 += `
+\u{1F4A1} Tip: Set morning digest topics with \`/topics AI, ML, Robotics\`.
+`;
+        }
         text2 += `
 Have a productive day! Reply with any task or expense anytime.`;
         await this.notification.sendText({
           chat_id: chatId,
           text: text2,
+          parse_mode: "Markdown"
+        });
+        break;
+      }
+      case "/topics": {
+        const rawArgs = text.replace(/^\/topics(@\w+)?/i, "").trim();
+        const memories = await this.db.getMemoriesForUser(user.id);
+        const topicMemory = memories.find(
+          (m) => m.key === "briefing_topics" || m.key === "topics"
+        );
+        if (!rawArgs) {
+          const currentTopics = topicMemory?.content || "Not set yet (e.g. AI, ML, Robotics, Startups)";
+          await this.notification.sendText({
+            chat_id: chatId,
+            text: `\u{1F4F0} *Your Morning Briefing Topics:*
+
+*Current Topics:* \`${currentTopics}\`
+
+To update your daily digest topics, type:
+\`/topics AI, ML, Robotics, Tech Startups\`
+
+Your morning 8:00 AM briefing will include these topics, and you can ask for a live gist anytime!`,
+            parse_mode: "Markdown"
+          });
+          break;
+        }
+        if (topicMemory) {
+          await this.db.updateMemory(topicMemory.id, { content: rawArgs });
+        } else {
+          await this.db.saveMemory({
+            userId: user.id,
+            category: "preference",
+            key: "briefing_topics",
+            content: rawArgs,
+            confidence: 1,
+            source: "user",
+            isActive: true
+          });
+        }
+        await this.notification.sendText({
+          chat_id: chatId,
+          text: `\u2705 *Briefing Topics Updated!*
+
+*Tracked Topics:* \`${rawArgs}\`
+
+I will focus on these for your daily morning digests and whenever you ask for trending updates!`,
           parse_mode: "Markdown"
         });
         break;
@@ -2529,13 +2608,20 @@ var MemoryEngine = class {
     }
     return { deletedCount };
   }
-  async getRelevantContext(userId, userMessage, maxTokens = 500) {
+  async getRelevantContext(userId, userMessage, maxTokens = 2e3) {
     const words = userMessage.toLowerCase().replace(/[^\w\s]/g, "").split(/\s+/).filter((w) => w.length > 3);
-    const query = words.slice(0, 5).join(" ");
-    const memories = await this.recall(userId, query || userMessage, void 0, 5);
+    const query = words.slice(0, 8).join(" ");
+    const memories = await this.recall(userId, query || userMessage, void 0, 15);
+    const preferences = await this.recall(userId, "", "preference", 10);
+    const combined = [...memories];
+    for (const p of preferences) {
+      if (!combined.some((m) => m.id === p.id)) {
+        combined.push(p);
+      }
+    }
     let currentLength = 0;
     const bounded = [];
-    for (const mem of memories) {
+    for (const mem of combined) {
       const entryLength = mem.content.length;
       if (currentLength + entryLength > maxTokens * 4) break;
       bounded.push({
@@ -2711,7 +2797,7 @@ Extract any task, deadline or action item from this forwarded message.` : text;
   }
   async handleNaturalLanguage(text, chatId, user, replyToMessageText) {
     const referenceTime = this.clock.now();
-    const recentHistory = await this.db.getRecentChatHistory(user.id, 6);
+    const recentHistory = await this.db.getRecentChatHistory(user.id, 20);
     await this.db.recordEvent(user.id, "chat_message", { role: "user", text });
     let conversationContext = "";
     if (recentHistory.length > 0) {
@@ -2723,7 +2809,7 @@ DIRECT REPLY: The user is explicitly replying to this message:
 "${replyToMessageText}"
 `;
     }
-    const memories = await this.memoryEngine.getRelevantContext(user.id, text, 300);
+    const memories = await this.memoryEngine.getRelevantContext(user.id, text, 2e3);
     const existingTasks = await this.db.listTasks(user.id, "all", user.timezone);
     let intent;
     const interpretInput = {
@@ -2801,6 +2887,61 @@ DIRECT REPLY: The user is explicitly replying to this message:
             text: `I had trouble interpreting the date/time for "${intent.title}". Could you specify the exact deadline (e.g. "Tomorrow at 6 PM")?`
           });
         }
+        break;
+      }
+      case "batch_create_tasks": {
+        const savedTasks = [];
+        for (const item of intent.tasks) {
+          try {
+            if (item.due_at_local) {
+              const dueUtc = parseLocalToUtc(item.due_at_local, intent.timezone || user.timezone);
+              const offsetMinutes = item.reminder_offset_minutes || 0;
+              const reminderUtc = new Date(dueUtc.getTime() - offsetMinutes * 60 * 1e3);
+              const { task } = await this.db.createTaskWithReminder(
+                user.id,
+                item.title,
+                dueUtc.toISOString(),
+                reminderUtc.toISOString(),
+                item.priority || "normal"
+              );
+              savedTasks.push({
+                title: task.title,
+                dueFormatted: formatLocalDateTime(dueUtc, user.timezone)
+              });
+            } else {
+              const task = await this.db.createTask(
+                user.id,
+                item.title,
+                null,
+                item.priority || "normal"
+              );
+              savedTasks.push({ title: task.title });
+            }
+          } catch {
+            const task = await this.db.createTask(
+              user.id,
+              item.title,
+              null,
+              item.priority || "normal"
+            );
+            savedTasks.push({ title: task.title });
+          }
+        }
+        let reply = `\u2705 *${savedTasks.length} Tasks & Reminders Saved:*
+
+`;
+        savedTasks.forEach((t, i) => {
+          reply += `${i + 1}. *${t.title}*${t.dueFormatted ? `
+   \u23F0 Deadline: ${t.dueFormatted}` : ""}
+`;
+        });
+        reply += `
+I will monitor and follow up on each of these deadlines.`;
+        await this.reply(chatId, user.id, {
+          chat_id: chatId,
+          text: reply.trim(),
+          parse_mode: "Markdown"
+        });
         break;
       }
       case "create_task": {

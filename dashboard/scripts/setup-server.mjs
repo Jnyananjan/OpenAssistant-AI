@@ -165,6 +165,35 @@ async function syncSupabaseSecrets(config) {
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(15000),
   }).catch(() => {});
+
+  // Sync pg_cron schedule with current worker secret and project ref
+  try {
+    const url = `https://${PROJECT_REF}.supabase.co/functions/v1/process-reminders`;
+    const sql = `
+      SELECT cron.unschedule('jana-ai-process-reminders') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'jana-ai-process-reminders');
+      SELECT cron.schedule(
+        'jana-ai-process-reminders',
+        '* * * * *',
+        $$select net.http_post(
+          url := '${url}',
+          headers := jsonb_build_object(
+            'Content-Type', 'application/json',
+            'Authorization', 'Bearer ${config.workerSecret}'
+          ),
+          body := '{}'::jsonb
+        ) as request_id;$$
+      );
+    `;
+    await fetch(`https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SUPABASE_ACCESS_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query: sql }),
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch {}
 }
 
 async function executeAutoDeploy(config) {
@@ -249,7 +278,7 @@ async function executeAutoDeploy(config) {
     await telegram(config, "setWebhook", {
       url: webhookUrl,
       secret_token: config.workerSecret,
-      allowed_updates: ["message", "edited_message"],
+      allowed_updates: ["message", "edited_message", "callback_query"],
     });
     logs.push("Telegram webhook registered successfully.");
   }
