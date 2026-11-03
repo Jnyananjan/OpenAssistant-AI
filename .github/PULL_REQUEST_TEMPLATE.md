@@ -27,3 +27,4 @@ Paste any screenshots or bot message interaction examples here.
 - [ ] My code adheres to the project's coding conventions and clean structure.
 - [ ] I have commented complex or non-obvious code.
 - [ ] I have updated the documentation / README where relevant.
+

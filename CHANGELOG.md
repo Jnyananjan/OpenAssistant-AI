@@ -33,3 +33,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Supabase Edge Functions deployment + PostgreSQL persistence.
 - Multi-provider AI support (Google Gemini, OpenAI, Anthropic Claude, Groq, OpenRouter).
 - Developer setup wizard and configuration server.
+

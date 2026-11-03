@@ -57,3 +57,4 @@ body:
       label: Relevant Logs or Error Output
       description: Paste any error messages from Edge Function logs or browser terminal.
       render: shell
+
